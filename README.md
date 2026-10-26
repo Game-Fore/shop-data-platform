@@ -62,6 +62,9 @@ flowchart LR
 Требования: Docker Desktop, Python 3.11+.
 
 ```powershell
+# 0. Пароли: скопировать шаблон и при желании поменять значения
+Copy-Item .env.example .env
+
 # 1. Поднять стенд и зарегистрировать коннектор
 .\reset.ps1
 
@@ -80,7 +83,7 @@ python .\consumer\consumer.py
 python verify.py
 ```
 
-На Linux/macOS вместо `reset.ps1` выполните `docker compose up -d --wait` и зарегистрируйте коннектор:
+На Linux/macOS: `cp .env.example .env`, затем вместо `reset.ps1` выполните `docker compose up -d --wait` и зарегистрируйте коннектор:
 `curl -X POST -H "Content-Type: application/json" --data @connectors/postgres-shop.json localhost:8083/connectors`.
 
 | UI | Адрес |

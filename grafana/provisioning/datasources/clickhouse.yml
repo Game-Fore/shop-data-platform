@@ -8,7 +8,7 @@ datasources:
       host: clickhouse
       port: 9000
       protocol: native
-      username: shop
+      username: $CLICKHOUSE_USER
       defaultDatabase: shop
     secureJsonData:
-      password: shop
+      password: $CLICKHOUSE_PASSWORD

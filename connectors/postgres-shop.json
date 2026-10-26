@@ -7,8 +7,8 @@
 
     "database.hostname": "postgres",
     "database.port": "5432",
-    "database.user": "shop",
-    "database.password": "shop",
+    "database.user": "${env:POSTGRES_USER}",
+    "database.password": "${env:POSTGRES_PASSWORD}",
     "database.dbname": "shop",
 
 

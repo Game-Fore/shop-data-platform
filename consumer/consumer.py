@@ -10,6 +10,7 @@ import os
 from datetime import datetime, timezone
 from decimal import Decimal
 from confluent_kafka import Consumer, KafkaError
+from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("consumer")
@@ -20,7 +21,14 @@ KAFKA_CONF = {
     "enable.auto.commit": False,
     "auto.offset.reset": "earliest",
 }
-CH_CONF = dict(host="localhost", port=8123, username="shop", password="shop", database="shop")
+load_dotenv()  # ищет .env вверх от этого файла, т.е. в корне репозитория
+CH_CONF = dict(
+    host=os.getenv("CLICKHOUSE_HOST", "localhost"),
+    port=int(os.getenv("CLICKHOUSE_HTTP_PORT", "8123")),
+    username=os.environ["CLICKHOUSE_USER"],
+    password=os.environ["CLICKHOUSE_PASSWORD"],
+    database="shop",
+)
 
 BATCH_SIZE = 1000
 FLUSH_INTERVAL_SEC = 1.0

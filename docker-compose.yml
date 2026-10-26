@@ -3,8 +3,8 @@ services:
     image: postgres:16
     container_name: postgres
     environment:
-      POSTGRES_USER: shop
-      POSTGRES_PASSWORD: shop
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
       POSTGRES_DB: shop
     command:
       - postgres
@@ -19,7 +19,7 @@ services:
     volumes:
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U shop -d shop"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d shop"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -68,6 +68,11 @@ services:
       CONFIG_STORAGE_REPLICATION_FACTOR: 1
       OFFSET_STORAGE_REPLICATION_FACTOR: 1
       STATUS_STORAGE_REPLICATION_FACTOR: 1
+      # Пароль в конфиг коннектора подставляется из env воркера: ${env:POSTGRES_PASSWORD}
+      CONNECT_CONFIG_PROVIDERS: env
+      CONNECT_CONFIG_PROVIDERS_ENV_CLASS: org.apache.kafka.common.config.provider.EnvVarConfigProvider
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf localhost:8083/connectors"]
       interval: 10s
@@ -93,8 +98,8 @@ services:
     container_name: clickhouse
     environment:
       CLICKHOUSE_DB: shop
-      CLICKHOUSE_USER: shop
-      CLICKHOUSE_PASSWORD: shop
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:?set in .env}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set in .env}
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     ports:
       - "8123:8123"
@@ -106,7 +111,7 @@ services:
         soft: 262144
         hard: 262144
     healthcheck:
-      test: ["CMD", "clickhouse-client", "--user", "shop", "--password", "shop", "-q", "SELECT 1"]
+      test: ["CMD-SHELL", "clickhouse-client --user \"$$CLICKHOUSE_USER\" --password \"$$CLICKHOUSE_PASSWORD\" -q 'SELECT 1'"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -124,6 +129,9 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
       GF_DASHBOARDS_MIN_REFRESH_INTERVAL: 1s
+      # подставляются в provisioning/datasources/clickhouse.yml
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:?set in .env}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set in .env}
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning
       - ./grafana/dashboards:/var/lib/grafana/dashboards

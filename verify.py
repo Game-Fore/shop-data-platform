@@ -1,15 +1,31 @@
 """Сверка Postgres (источник) и ClickHouse (приёмник) после CDC."""
 import argparse
+import os
 import sys
 import time
 import clickhouse_connect
 import psycopg
 
 from decimal import Decimal
+from dotenv import load_dotenv
+from psycopg.conninfo import make_conninfo
 
 
-PG_DSN = "postgresql://shop:shop@localhost:5432/shop"
-CH_CONF = dict(host="localhost", port=8123, username="shop", password="shop", database="shop")
+load_dotenv()
+PG_DSN = make_conninfo(
+    host=os.getenv("POSTGRES_HOST", "localhost"),
+    port=os.getenv("POSTGRES_PORT", "5432"),
+    user=os.environ["POSTGRES_USER"],
+    password=os.environ["POSTGRES_PASSWORD"],
+    dbname="shop",
+)
+CH_CONF = dict(
+    host=os.getenv("CLICKHOUSE_HOST", "localhost"),
+    port=int(os.getenv("CLICKHOUSE_HTTP_PORT", "8123")),
+    username=os.environ["CLICKHOUSE_USER"],
+    password=os.environ["CLICKHOUSE_PASSWORD"],
+    database="shop",
+)
 
 CHECKS = {
     "customers": (

@@ -1,4 +1,5 @@
 import argparse
+import os
 import logging
 import random
 import time
@@ -8,7 +9,9 @@ import psycopg
 
 from collections import Counter
 from decimal import Decimal
+from dotenv import load_dotenv
 from faker import Faker
+from psycopg.conninfo import make_conninfo
 
 
 
@@ -16,7 +19,15 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("generator")
 
 fake = Faker("ru_RU")
-DSN = "postgresql://shop:shop@localhost:5432/shop"
+load_dotenv()
+# make_conninfo экранирует спецсимволы в пароле (в отличие от f-строки с URL)
+DSN = make_conninfo(
+    host=os.getenv("POSTGRES_HOST", "localhost"),
+    port=os.getenv("POSTGRES_PORT", "5432"),
+    user=os.environ["POSTGRES_USER"],
+    password=os.environ["POSTGRES_PASSWORD"],
+    dbname="shop",
+)
 
 # допустимые переходы статусов заказа
 STATUS_FLOW = {
