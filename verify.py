@@ -46,6 +46,14 @@ CHECKS = {
         "SELECT arrayStringConcat(groupArray(status || '=' || toString(cnt)), ',') "
         "FROM (SELECT status, count() AS cnt FROM shop.orders FINAL GROUP BY status ORDER BY status)",
     ),
+    # последняя версия каждого заказа в журнале (MV) должна совпасть с текущим состоянием
+    "orders_changelog": (
+        "SELECT count(*), coalesce(sum(id), 0), coalesce(sum(total), 0) FROM orders",
+        "SELECT count(), sum(order_id), sum(total) FROM ("
+        "  SELECT order_id, argMax(total, _lsn) AS total, argMax(_is_deleted, _lsn) AS deleted"
+        "  FROM shop.orders_changelog GROUP BY order_id"
+        ") WHERE deleted = 0",
+    ),
     "order_items": (
         "SELECT count(*), coalesce(sum(id), 0), coalesce(sum(quantity), 0), coalesce(sum(price * quantity), 0) "
         "FROM order_items",
