@@ -74,6 +74,9 @@ python -m venv .venv
 pip install -r requirements.txt
 
 # 3. Окно 1: нагрузка
+#    (опционально, на пустой базе) история за 180 дней: ~16k заказов, ~67k событий, ~1 мин
+python generator.py --backfill-days 180
+#    живая нагрузка
 python generator.py --rps 5
 
 # 4. Окно 2: consumer

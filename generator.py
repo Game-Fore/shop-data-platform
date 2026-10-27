@@ -7,6 +7,7 @@ import psycopg
 
 
 
+from backfill import run_backfill
 from collections import Counter
 from decimal import Decimal
 from dotenv import load_dotenv
@@ -121,11 +122,18 @@ def main():
     parser = argparse.ArgumentParser(description="OLTP load generator for shop DB")
     parser.add_argument("--dsn", default=DSN)
     parser.add_argument("--rps", type=float, default=5.0, help="actions per second")
+    parser.add_argument("--backfill-days", type=int, default=0,
+                        help="сгенерировать историю за N дней (на пустой базе) и выйти")
+    parser.add_argument("--seed", type=int, default=42, help="seed для воспроизводимого backfill")
     args = parser.parse_args()
 
     funcs, weights = zip(*ACTIONS)
 
     with psycopg.connect(args.dsn, autocommit=True) as conn:
+        if args.backfill_days:
+            run_backfill(conn, args.backfill_days, args.seed)
+            return
+
         # стартовый набор клиентов
         with conn.transaction(), conn.cursor() as cur:
             cur.execute("SELECT count(*) FROM customers")
