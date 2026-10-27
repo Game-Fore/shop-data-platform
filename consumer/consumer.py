@@ -9,7 +9,7 @@ import os
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from confluent_kafka import Consumer, KafkaError
+from confluent_kafka import Consumer, KafkaError, KafkaException
 from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -20,6 +20,9 @@ KAFKA_CONF = {
     "group.id": "cdc-clickhouse",
     "enable.auto.commit": False,
     "auto.offset.reset": "earliest",
+    # Debezium создаёт топик при первом событии таблицы. Если consumer стартовал раньше,
+    # librdkafka увидит новый топик только при обновлении метаданных (по умолчанию раз в 5 мин).
+    "topic.metadata.refresh.interval.ms": 5000,
 }
 load_dotenv()  # ищет .env вверх от этого файла, т.е. в корне репозитория
 CH_CONF = dict(
@@ -103,6 +106,17 @@ def flush(ch, buffers: dict) -> int:
     return total
 
 
+def commit(consumer):
+    """Синхронный коммит позиций. _NO_OFFSET - не ошибка: после ребаланса (например,
+    когда Debezium создал новый топик) позиций ещё нет и коммитить нечего."""
+    try:
+        consumer.commit(asynchronous=False)
+    except KafkaException as e:
+        if e.args[0].code() != KafkaError._NO_OFFSET:
+            raise
+        log.info("nothing to commit (no offsets stored after rebalance)")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--crash-after-flush", type=int, default=0,
@@ -148,14 +162,14 @@ def main():
                 if args.crash_after_flush and flushes >= args.crash_after_flush:
                     log.warning("simulating crash after flush #%d: data inserted, offsets NOT committed", flushes)
                     os._exit(1)  # мгновенный выход без finally и без commit
-                consumer.commit(asynchronous=False)
+                commit(consumer)
                 log.info("flushed %d rows", n)
                 pending = 0
                 last_flush = time.monotonic()
     finally:
         if pending:
             flush(ch, buffers)
-            consumer.commit(asynchronous=False)
+            commit(consumer)
         consumer.close()
         log.info("stopped")
 
