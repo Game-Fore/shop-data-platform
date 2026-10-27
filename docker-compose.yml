@@ -135,3 +135,20 @@ services:
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning
       - ./grafana/dashboards:/var/lib/grafana/dashboards
+
+  # dbt запускается по требованию: docker compose run --rm dbt <команда>
+  # профиль tools - сервис не стартует при обычном docker compose up
+  dbt:
+    build: ./dbt
+    image: shop-dbt:1.11
+    profiles: ["tools"]
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:?set in .env}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set in .env}
+    volumes:
+      - ./dbt:/dbt
+    ports:
+      - "8081:8081"  # dbt docs serve (нужен --service-ports)

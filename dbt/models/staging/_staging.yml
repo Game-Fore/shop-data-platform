@@ -1,0 +1,63 @@
+models:
+  - name: stg_customers
+    description: Текущее состояние клиентов (одна строка на клиента).
+    columns:
+      - name: customer_id
+        description: Первичный ключ.
+        data_tests: [not_null, unique]
+      - name: email
+        data_tests: [not_null, unique]
+      - name: signup_date
+        description: Дата регистрации в бизнес-таймзоне (var business_tz).
+
+  - name: stg_products
+    description: Справочник товаров с текущей ценой.
+    columns:
+      - name: product_id
+        description: Первичный ключ.
+        data_tests: [not_null, unique]
+      - name: current_price
+        description: Цена сейчас. Для выручки не использовать - цена в заказе лежит в stg_order_items.unit_price.
+
+  - name: stg_orders
+    description: Текущее состояние заказов (одна строка на заказ, удалённые исключены).
+    columns:
+      - name: order_id
+        description: Первичный ключ.
+        data_tests: [not_null, unique]
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["new", "paid", "shipped", "delivered", "cancelled"]
+      - name: is_revenue
+        description: 1, если статус входит в var revenue_statuses (деньги получены).
+      - name: order_total
+        description: Сумма заказа на момент оформления.
+      - name: order_date
+        description: Дата заказа в бизнес-таймзоне.
+
+  - name: stg_order_items
+    description: Позиции заказов.
+    columns:
+      - name: order_item_id
+        description: Первичный ключ.
+        data_tests: [not_null, unique]
+      - name: unit_price
+        description: Цена за единицу на момент заказа.
+      - name: line_total
+        description: unit_price * quantity.
+
+  - name: stg_order_events
+    description: >
+      Все CDC-события по заказам из shop.orders_changelog. Основа для воронки статусов
+      и времени между этапами: в stg_orders осталась только последняя версия.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [order_id, lsn]
+    columns:
+      - name: event_at
+        description: Бизнес-время события (updated_at из Postgres).
+      - name: op
+        description: "Тип операции Debezium: r (snapshot), c (insert), u (update), d (delete)."

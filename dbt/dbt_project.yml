@@ -1,0 +1,27 @@
+name: shop
+version: "1.0.0"
+config-version: 2
+profile: shop
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # бизнес-день считаем по Москве: заказ в 01:00 МСК относится к "сегодня", а не ко "вчера" по UTC
+  business_tz: "Europe/Moscow"
+  # статусы, которые считаются выручкой: деньги получены (отменённые и неоплаченные - нет)
+  revenue_statuses: ["paid", "shipped", "delivered"]
+
+models:
+  shop:
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediate:
+      +schema: intermediate
+      +materialized: ephemeral
+    marts:
+      +schema: marts
+      +materialized: table

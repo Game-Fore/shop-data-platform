@@ -1,0 +1,30 @@
+sources:
+  - name: shop
+    schema: shop
+    description: >
+      Raw-слой: таблицы, которые пишет CDC-consumer (Postgres -> Debezium -> Kafka -> ClickHouse).
+      ReplacingMergeTree(_lsn, _is_deleted): одна строка на каждую версию записи до фонового мержа,
+      поэтому читать текущее состояние нужно через FINAL. Таблицами владеет пайплайн, не dbt.
+    config:
+      loaded_at_field: _ingested_at
+      # свежесть = насколько давно consumer что-то записал; при остановленном генераторе
+      # предупреждение - ожидаемое поведение, а не ошибка модели
+      freshness:
+        warn_after: {count: 1, period: hour}
+        error_after: {count: 24, period: hour}
+
+    tables:
+      - name: customers
+        description: Клиенты магазина.
+      - name: orders
+        description: Заказы, текущее состояние. Статус меняется через UPDATE, отменённые заказы иногда удаляются.
+      - name: order_items
+        description: Позиции заказа. price - цена на момент заказа.
+      - name: products
+        description: Справочник товаров. Цена меняется через UPDATE.
+        config:
+          freshness: null  # товары меняются редко, их свежесть не показатель
+      - name: orders_changelog
+        description: >
+          Журнал всех CDC-событий по заказам (append-only, заполняется MV из shop.orders).
+          Каждая версия заказа: переходы статусов, удаления. Ключ события - (order_id, _lsn).
