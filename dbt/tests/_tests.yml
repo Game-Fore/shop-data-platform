@@ -1,0 +1,24 @@
+data_tests:
+  - name: assert_order_total_matches_items
+    description: >
+      orders.total равен сумме price * quantity его позиций. Заказы моложе 5 минут исключены:
+      orders и order_items приходят разными INSERT и могут кратко расходиться (eventual consistency).
+
+  - name: assert_fct_orders_match_current_state
+    description: >
+      fct_orders (собран из журнала CDC) и stg_orders (текущее состояние через FINAL) дают
+      одинаковый статус и сумму для каждого не удалённого заказа. Проверяет, что MV-журнал
+      не теряет события.
+
+  - name: assert_sales_daily_reconciles
+    description: >
+      Сумма заказов и выручки в mart_sales_daily совпадает с fct_orders: сетка дат и джойны
+      ничего не потеряли и не задвоили.
+
+  - name: assert_sales_daily_has_no_gaps
+    description: В mart_sales_daily нет пропущенных дат (число строк = длина интервала в днях).
+
+  - name: assert_cohort_month0_is_full
+    description: >
+      В месяц когорты активны все её клиенты (retention при month_offset = 0 равен 1).
+      Нашёл реальный баг: алиас assumeNotNull(cohort_month) перекрывал колонку в WHERE.
