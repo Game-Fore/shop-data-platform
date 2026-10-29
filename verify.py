@@ -54,6 +54,12 @@ CHECKS = {
         "  FROM shop.orders_changelog GROUP BY order_id"
         ") WHERE deleted = 0",
     ),
+    "experiment_assignments": (
+        "SELECT count(*), coalesce(sum(customer_id), 0), count(*) FILTER (WHERE variant = 'treatment') "
+        "FROM experiment_assignments",
+        "SELECT count(), sum(customer_id), countIf(variant = 'treatment') "
+        "FROM shop.experiment_assignments FINAL",
+    ),
     "order_items": (
         "SELECT count(*), coalesce(sum(id), 0), coalesce(sum(quantity), 0), coalesce(sum(price * quantity), 0) "
         "FROM order_items",
@@ -124,12 +130,12 @@ def main():
                 break
             time.sleep(2)
 
-    print(f"{'check':<18} {'status':<6} postgres | clickhouse")
+    print(f"{'check':<24} {'status':<6} postgres | clickhouse")
     for name, pg_row, ch_row, match in results:
         status = "OK" if match else "DIFF"
         pg_s = ", ".join(map(str, pg_row))
         ch_s = ", ".join(map(str, ch_row))
-        print(f"{name:<18} {status:<6} {pg_s}" + ("" if match else f" | {ch_s}"))
+        print(f"{name:<24} {status:<6} {pg_s}" + ("" if match else f" | {ch_s}"))
 
     print("\nraw rows in ClickHouse / duplicates (same id + _lsn, not merged yet):")
     for t, (raw, dup) in duplicates(ch).items():

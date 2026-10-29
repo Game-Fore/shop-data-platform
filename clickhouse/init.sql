@@ -112,3 +112,22 @@ SELECT
     _is_deleted,
     _ingested_at
 FROM shop.orders;
+
+
+
+-- Назначения в группы A/B-экспериментов. Ключ (experiment_id, customer_id) повторяет
+-- составной первичный ключ Postgres.
+CREATE TABLE shop.experiment_assignments
+(
+    experiment_id LowCardinality(String),
+    customer_id   UInt32,
+    variant       LowCardinality(String),
+    assigned_at   DateTime64(6, 'UTC'),
+    _op           LowCardinality(String),
+    _lsn          UInt64,
+    _source_ts    DateTime64(3, 'UTC'),
+    _is_deleted   UInt8,
+    _ingested_at  DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(_lsn, _is_deleted)
+ORDER BY (experiment_id, customer_id);

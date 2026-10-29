@@ -1,21 +1,13 @@
-# Shop Data Platform
+# Платформа данных интернет-магазина
 
-## In English
+Платформа данных интернет-магазина: от OLTP-базы до витрин и аналитики. Изменения из PostgreSQL в реальном времени попадают в ClickHouse через CDC, поверх raw-слоя dbt строит staging и бизнес-витрины, Grafana показывает задержку пайплайна. Всё на open-source инструментах и запускается на ноутбуке через Docker Compose.
 
-An end-to-end data platform for a simulated e-commerce shop, built entirely on open-source tools and runnable on a laptop with Docker Compose.
+Коротко:
 
-- **CDC ingestion**: PostgreSQL 16 → Debezium 3.0 (WAL, `pgoutput`) → Kafka 3.9 (KRaft) → Python consumer (batching, manual offset commits, retries) → ClickHouse 25.8 (`ReplacingMergeTree(_lsn, _is_deleted)`). End-to-end latency p50 ≈ 1.5 s; at-least-once delivery with an idempotent sink, verified by failure tests.
-- **Full change history**: a ClickHouse materialized view keeps every CDC version of each order (status transitions, deletes), which the current-state tables lose after merges.
-- **Warehouse in dbt** (`dbt-clickhouse`): raw → staging (views over `FINAL`) → marts (facts, dimensions, daily sales, monthly cohort retention) with 56 models and data tests, including reconciliation tests that caught real bugs.
-- **Realistic history**: a reproducible 180-day backfill (~16k orders) generated from a decaying Poisson purchase process with Gamma-distributed customer intensity, so cohorts and RFM segments are meaningful.
-
-Quick start: `cp .env.example .env`, `docker compose up -d --wait`, register the connector, run the consumer, `python generator.py --backfill-days 180`, then `docker compose run --rm dbt build`. Details below (in Russian).
-
-Roadmap: Jupyter analytics with an A/B test, Superset BI, Airflow orchestration with CBR exchange rates, Prometheus metrics and DLQ, CI with pytest/ruff/dbt.
-
----
-
-Платформа данных интернет-магазина: от OLTP-базы до витрин и аналитики. Изменения из PostgreSQL в реальном времени попадают в ClickHouse через CDC, поверх raw-слоя dbt строит staging и бизнес-витрины, Grafana показывает задержку пайплайна.
+- **CDC**: PostgreSQL 16 → Debezium 3.0 (WAL, `pgoutput`) → Kafka 3.9 (KRaft) → Python-consumer (батчи, ручной commit offset'ов, ретраи) → ClickHouse 25.8 (`ReplacingMergeTree(_lsn, _is_deleted)`). Задержка p50 ≈ 1.5 с, доставка at-least-once с идемпотентным приёмником, проверена тестами отказов.
+- **Полная история изменений**: materialized view в ClickHouse сохраняет каждую версию заказа (переходы статусов, удаления), которую таблицы текущего состояния теряют после мержа.
+- **Хранилище в dbt** (`dbt-clickhouse`): raw → staging (views с `FINAL`) → marts (факты, измерения, продажи по дням, когортный retention), 56 моделей и тестов, включая сверки между слоями, которые нашли реальные ошибки.
+- **Реалистичная история**: воспроизводимый backfill за 180 дней (~16 тыс. заказов) на основе затухающего пуассоновского процесса покупок с Gamma-распределённой активностью клиентов, поэтому когорты и RFM-сегменты осмысленны.
 
 Проект вырос из [cdc-pg-clickhouse](https://github.com/Game-Fore/cdc-pg-clickhouse) и развивается по этапам:
 

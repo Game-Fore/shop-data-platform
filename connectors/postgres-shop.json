@@ -13,7 +13,7 @@
 
 
     "topic.prefix": "shop",
-    "table.include.list": "public.customers,public.products,public.orders,public.order_items",
+    "table.include.list": "public.customers,public.products,public.orders,public.order_items,public.experiment_assignments",
     "slot.name": "debezium_shop",
     "publication.name": "dbz_shop",
     "publication.autocreate.mode": "filtered",

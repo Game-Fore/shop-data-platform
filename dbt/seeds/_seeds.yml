@@ -1,0 +1,19 @@
+seeds:
+  - name: experiments
+    description: >
+      Реестр A/B-экспериментов: справочник, который ведут вручную и хранят в git.
+      Начало эксперимента не хранится, а берётся из данных: момент первого назначения.
+    config:
+      schema: marts
+      column_types:
+        experiment_id: String
+        duration_days: UInt16
+        primary_metric: String
+        description: String
+    columns:
+      - name: experiment_id
+        data_tests: [not_null, unique]
+      - name: duration_days
+        description: Длительность в днях; должна совпадать с EXPERIMENT_DAYS в backfill.py.
+      - name: primary_metric
+        description: Основная метрика, по которой принимается решение (фиксируется до запуска).

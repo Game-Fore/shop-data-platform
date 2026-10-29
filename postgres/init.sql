@@ -35,6 +35,17 @@ ALTER TABLE products    REPLICA IDENTITY FULL;
 ALTER TABLE orders      REPLICA IDENTITY FULL;
 ALTER TABLE order_items REPLICA IDENTITY FULL;
 
+-- Назначения клиентов в группы A/B-экспериментов (exposure log).
+-- Пишется в момент назначения и больше не меняется; группа клиента в эксперименте одна.
+CREATE TABLE experiment_assignments (
+    experiment_id TEXT NOT NULL,
+    customer_id   INT  NOT NULL REFERENCES customers(id),
+    variant       TEXT NOT NULL CHECK (variant IN ('control', 'treatment')),
+    assigned_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (experiment_id, customer_id)
+);
+ALTER TABLE experiment_assignments REPLICA IDENTITY FULL;
+
 INSERT INTO products (name, category, price) VALUES
   ('Laptop', 'electronics', 1200.00),
   ('Headphones', 'electronics', 150.00),

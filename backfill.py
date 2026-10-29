@@ -14,12 +14,19 @@
 - статусы идут new -> paid -> shipped -> delivered с отменами; переходы, которые
   "ещё не наступили" (позже now), не применяются - свежие заказы остаются в пути.
 
+A/B-эксперимент (последние EXPERIMENT_DAYS дней): каждый клиент назначается в группу
+детерминированным хэшем; в группе treatment заказы в окне эксперимента получают скидку,
+реже остаются неоплаченными, а повторные покупки случаются чаще. Это "истинные" эффекты,
+которые ноутбук notebooks/05_ab_test должен восстановить по данным.
+
 Бизнес-время лежит в created_at/updated_at. _source_ts в ClickHouse - это время
 загрузки через CDC, для аналитики backfill-данных его использовать нельзя.
 """
+import hashlib
 import logging
 import math
 import random
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -37,6 +44,16 @@ REPEAT_DECAY_DAYS = 60.0          # характерное время затух
 PRICE_CHANGE_EVERY_DAYS = 14.0    # в среднем раз в две недели на товар
 BATCH_SIZE = 500                  # событий на транзакцию
 
+# A/B-эксперимент. Длительность должна совпадать с dbt/seeds/experiments.csv.
+EXPERIMENT_ID = "discount_10"
+EXPERIMENT_DAYS = 42
+TREATMENT_SHARE = 0.5
+UNPAID_PROB = 0.12                # доля заказов, которые так и не оплатили (вне эксперимента и в control)
+# истинные эффекты для treatment в окне эксперимента
+DISCOUNT = Decimal("0.10")        # цена ниже на 10%
+TREATMENT_UNPAID_PROB = 0.08      # со скидкой чаще доходят до оплаты
+REPEAT_BOOST = 1.15               # повторные покупки в 1.15 раза чаще
+
 WEEKDAY_WEIGHT = [0.9, 0.85, 0.85, 0.9, 1.05, 1.25, 1.2]  # пн..вс
 HOUR_WEIGHT = [1.0, 0.5, 0.3, 0.2, 0.2, 0.3, 0.6, 1.2, 2.0, 2.5, 3.0, 3.2,
                3.5, 3.4, 3.2, 3.0, 3.0, 3.2, 3.6, 4.0, 4.2, 3.8, 3.0, 2.0]
@@ -45,6 +62,7 @@ HOUR_WEIGHT = [1.0, 0.5, 0.3, 0.2, 0.2, 0.3, 0.6, 1.2, 2.0, 2.5, 3.0, 3.2,
 @dataclass
 class Customer:
     created_at: datetime
+    variant: str = "control"
     id: int | None = None
 
 
@@ -53,6 +71,7 @@ class Order:
     customer: Customer
     created_at: datetime
     lines: list[tuple[int, int]]  # (product_id, quantity); цена берётся на момент заказа
+    discount: Decimal = Decimal("0")
     id: int | None = None
 
 
@@ -60,7 +79,7 @@ class Order:
 class Event:
     ts: datetime
     seq: int                                  # стабильный порядок при равном ts
-    kind: str = field(compare=False)          # customer | order | status | price
+    kind: str = field(compare=False)          # customer | assignment | order | status | price
     payload: tuple = field(compare=False)
 
 
@@ -85,9 +104,17 @@ def hours(h: float) -> timedelta:
     return timedelta(hours=h)
 
 
-def lifecycle(created: datetime) -> list[tuple[datetime, str]]:
+def assign_variant(customer_key: int) -> str:
+    """Детерминированное назначение в группу: хэш от (эксперимент, клиент), как в продакшене.
+    Соль = id эксперимента, поэтому в разных экспериментах разбиения независимы.
+    customer_key - порядковый номер клиента в симуляции: настоящий id выдаёт SERIAL только при записи."""
+    h = int(hashlib.md5(f"{EXPERIMENT_ID}:{customer_key}".encode()).hexdigest(), 16)
+    return "treatment" if h % 10_000 < TREATMENT_SHARE * 10_000 else "control"
+
+
+def lifecycle(created: datetime, unpaid_prob: float = UNPAID_PROB) -> list[tuple[datetime, str]]:
     """Переходы статусов заказа после создания (без учёта now)."""
-    if random.random() < 0.12:  # не оплатили
+    if random.random() < unpaid_prob:  # не оплатили
         return [(created + hours(random.expovariate(1 / 20)), "cancelled")]
     paid = created + hours(random.expovariate(1 / 3))
     if random.random() < 0.04:  # отмена после оплаты, до отгрузки
@@ -97,14 +124,22 @@ def lifecycle(created: datetime) -> list[tuple[datetime, str]]:
     return [(paid, "paid"), (shipped, "shipped"), (delivered, "delivered")]
 
 
-def repeat_order_times(signup: datetime, now: datetime) -> list[datetime]:
-    """Повторные заказы: интенсивность lambda_i * exp(-t / tau) на [signup, now]."""
+def repeat_order_times(
+    signup: datetime, now: datetime, boost: Callable[[datetime], float]
+) -> list[datetime]:
+    """Повторные заказы: интенсивность lambda_i * exp(-t / tau) * boost(t) на [signup, now].
+
+    boost(t) in [1, REPEAT_BOOST] - эффект эксперимента. Реализован прореживанием: процесс
+    генерируется с интенсивностью, умноженной на максимум REPEAT_BOOST, и каждый заказ
+    остаётся с вероятностью boost(t) / REPEAT_BOOST. Так получается точный процесс с нужной
+    интенсивностью, а случайные числа для control и treatment тратятся одинаково.
+    """
     tau = REPEAT_DECAY_DAYS
     horizon = (now - signup).total_seconds() / 86400
     lam_i = random.gammavariate(REPEAT_SHAPE, REPEAT_MEAN / REPEAT_SHAPE) / tau
     mass = 1 - math.exp(-horizon / tau)       # доля "активности", попадающая в окно
     times = []
-    for _ in range(poisson(lam_i * tau * mass)):
+    for _ in range(poisson(lam_i * tau * mass * REPEAT_BOOST)):
         # обратная функция распределения усечённой экспоненты на [0, horizon]
         offset_days = -tau * math.log(1 - random.random() * mass)
         day = signup + timedelta(days=offset_days)
@@ -112,26 +147,36 @@ def repeat_order_times(signup: datetime, now: datetime) -> list[datetime]:
         if random.random() > WEEKDAY_WEIGHT[day.weekday()] / max(WEEKDAY_WEIGHT):
             continue
         ts = at_random_hour(day)
-        if signup < ts < now:
+        if not signup < ts < now:
+            continue
+        if random.random() < boost(ts) / REPEAT_BOOST:
             times.append(ts)
     return times
 
 
 def build_events(days: int, product_ids: list[int], now: datetime) -> list[Event]:
     start = now - timedelta(days=days)
+    experiment_start = max(start, now - timedelta(days=EXPERIMENT_DAYS))
     events: list[Event] = []
 
     def add(ts, kind, *payload):
         events.append(Event(ts, len(events), kind, payload))
 
+    def treated(customer: Customer, ts: datetime) -> bool:
+        return customer.variant == "treatment" and ts >= experiment_start
+
     def add_order(customer: Customer, ts: datetime):
         picked = random.sample(product_ids, random.randint(1, min(4, len(product_ids))))
-        order = Order(customer, ts, [(pid, random.randint(1, 3)) for pid in picked])
+        is_treated = treated(customer, ts)
+        order = Order(customer, ts, [(pid, random.randint(1, 3)) for pid in picked],
+                      discount=DISCOUNT if is_treated else Decimal("0"))
         add(ts, "order", order)
-        for status_ts, status in lifecycle(ts):
+        unpaid_prob = TREATMENT_UNPAID_PROB if is_treated else UNPAID_PROB
+        for status_ts, status in lifecycle(ts, unpaid_prob):
             if status_ts < now:
                 add(status_ts, "status", order, status)
 
+    customer_key = 0
     for d in range(days):
         day = start + timedelta(days=d)
         growth = GROWTH[0] + (GROWTH[1] - GROWTH[0]) * d / max(days - 1, 1)
@@ -140,13 +185,18 @@ def build_events(days: int, product_ids: list[int], now: datetime) -> list[Event
             signup = at_random_hour(day)
             if signup >= now:
                 continue
-            customer = Customer(signup)
+            customer_key += 1
+            customer = Customer(signup, variant=assign_variant(customer_key))
             add(signup, "customer", customer)
+            # участвуют все клиенты: зарегистрированные раньше назначаются в момент старта
+            # эксперимента, новые - при регистрации (intention-to-treat)
+            add(max(signup, experiment_start), "assignment", customer)
             if random.random() < FIRST_ORDER_PROB:
                 first = signup + timedelta(minutes=5 + random.expovariate(1 / 30))
                 if first < now:
                     add_order(customer, first)
-            for ts in repeat_order_times(signup, now):
+            boost = lambda ts, c=customer: REPEAT_BOOST if treated(c, ts) else 1.0  # noqa: E731
+            for ts in repeat_order_times(signup, now, boost):
                 add_order(customer, ts)
 
     for pid in product_ids:
@@ -172,9 +222,20 @@ def apply(cur, ev: Event, prices: dict[int, Decimal], fake: Faker):
             row = cur.fetchone()
             customer.id = row[0] if row else None
 
+    elif ev.kind == "assignment":
+        (customer,) = ev.payload
+        cur.execute(
+            "INSERT INTO experiment_assignments (experiment_id, customer_id, variant, assigned_at) "
+            "VALUES (%s, %s, %s, %s)",
+            (EXPERIMENT_ID, customer.id, customer.variant, ev.ts),
+        )
+
     elif ev.kind == "order":
         (order,) = ev.payload
-        lines = [(pid, qty, prices[pid]) for pid, qty in order.lines]
+        # скидка эксперимента уже в цене позиции: как в реальном магазине, где в заказ
+        # попадает итоговая цена
+        lines = [(pid, qty, (prices[pid] * (1 - order.discount)).quantize(Decimal("0.01")))
+                 for pid, qty in order.lines]
         total = sum((price * qty for _, qty, price in lines), Decimal("0"))
         # в отличие от живого генератора total пишется сразу: один INSERT вместо c -> u
         cur.execute(
@@ -215,7 +276,8 @@ def run_backfill(conn, days: int, seed: int):
 
     now = datetime.now(timezone.utc)
     events = build_events(days, list(prices), now)
-    counts = {k: sum(e.kind == k for e in events) for k in ("customer", "order", "status", "price")}
+    counts = {k: sum(e.kind == k for e in events)
+              for k in ("customer", "assignment", "order", "status", "price")}
     log.info("backfill %d days (seed=%d): %s", days, seed, counts)
 
     for i in range(0, len(events), BATCH_SIZE):

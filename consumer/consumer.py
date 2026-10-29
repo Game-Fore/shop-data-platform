@@ -68,6 +68,9 @@ TABLES = {
     "shop.public.order_items": ("order_items", {
         "id": raw, "order_id": raw, "product_id": raw, "quantity": raw, "price": dec,
     }),
+    "shop.public.experiment_assignments": ("experiment_assignments", {
+        "experiment_id": raw, "customer_id": raw, "variant": raw, "assigned_at": ts,
+    }),
 }
 META_COLUMNS = ["_op", "_lsn", "_source_ts", "_is_deleted"]
 

@@ -1,0 +1,2 @@
+experiment_id,duration_days,primary_metric,description
+discount_10,42,conversion,Скидка 10% на все заказы группы treatment

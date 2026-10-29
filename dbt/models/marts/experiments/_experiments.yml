@@ -1,0 +1,36 @@
+models:
+  - name: mart_ab_users
+    description: >
+      Участники A/B-экспериментов (одна строка на клиента в эксперименте): группа и метрики
+      в окне эксперимента и в предпериоде той же длины. Анализ intention-to-treat:
+      в выборке все назначенные, включая не купивших. Основа ноутбука notebooks/05_ab_test.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [experiment_id, customer_id]
+    columns:
+      - name: experiment_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('experiments')
+                field: experiment_id
+      - name: customer_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_id
+      - name: variant
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["control", "treatment"]
+      - name: converted
+        description: Была хотя бы одна покупка (заказ с выручкой) в окне эксперимента.
+      - name: revenue
+        description: Выручка клиента в окне эксперимента (ARPU = среднее по группе).
+        data_tests: [non_negative]
+      - name: pre_revenue
+        description: Выручка за предпериод той же длины до старта; ковариата для CUPED.
+        data_tests: [non_negative]

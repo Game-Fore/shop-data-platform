@@ -24,6 +24,10 @@ sources:
         description: Справочник товаров. Цена меняется через UPDATE.
         config:
           freshness: null  # товары меняются редко, их свежесть не показатель
+      - name: experiment_assignments
+        description: Назначения клиентов в группы A/B-экспериментов (exposure log). Ключ (experiment_id, customer_id).
+        config:
+          freshness: null  # пишется только при назначении, а не непрерывно
       - name: orders_changelog
         description: >
           Журнал всех CDC-событий по заказам (append-only, заполняется MV из shop.orders).
