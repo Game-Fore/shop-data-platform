@@ -1,0 +1,10 @@
+# Зависимости для ноутбуков (notebooks/) и модуля analytics/.
+# Отдельно от requirements.txt: consumer'у и генератору тяжёлый научный стек не нужен.
+clickhouse-connect
+python-dotenv
+pandas>=2.2
+numpy>=2.0
+scipy>=1.14
+statsmodels>=0.14
+matplotlib>=3.9
+jupyterlab>=4.2
