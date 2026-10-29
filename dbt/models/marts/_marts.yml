@@ -128,3 +128,44 @@ models:
                 max_value: 1
       - name: is_complete_period
         description: Месяц активности закончился.
+
+  - name: mart_customer_rfm
+    description: >
+      RFM-сегментация покупателей (клиенты хотя бы с одной покупкой). R и M - квинтили,
+      F - пороги 1 | 2 | 3-4 | 5-7 | 8+. Правила выбраны в notebooks/04_rfm.ipynb.
+    columns:
+      - name: customer_id
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_id
+      - name: recency_days
+        description: Дней с последней покупки (от сегодняшней даты в бизнес-таймзоне).
+        data_tests: [non_negative]
+      - name: r_score
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5]
+                quote: false
+      - name: f_score
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5]
+                quote: false
+      - name: m_score
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5]
+                quote: false
+      - name: segment
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["Чемпионы", "Лояльные", "Новички", "Под угрозой", "Требуют внимания", "Засыпают", "Потерянные"]

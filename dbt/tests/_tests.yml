@@ -22,3 +22,6 @@ data_tests:
     description: >
       В месяц когорты активны все её клиенты (retention при month_offset = 0 равен 1).
       Нашёл реальный баг: алиас assumeNotNull(cohort_month) перекрывал колонку в WHERE.
+
+  - name: assert_rfm_covers_all_buyers
+    description: Каждый клиент с покупками попал в mart_customer_rfm, и лишних строк нет.
