@@ -1,0 +1,130 @@
+models:
+  # ---------- core ----------
+  - name: fct_orders
+    description: >
+      Заказы за всю историю (одна строка на заказ), включая удалённые в источнике.
+      Состояние - последняя версия из журнала CDC, время этапов - из переходов статусов.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "paid_at <= shipped_at and shipped_at <= delivered_at"
+          config:
+            description: Статусы идут по порядку (NULL - этап не наступил, не ошибка).
+    columns:
+      - name: order_id
+        data_tests: [not_null, unique]
+      - name: customer_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_id
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["new", "paid", "shipped", "delivered", "cancelled"]
+      - name: is_revenue
+        description: Заказ приносит выручку (статус из var revenue_statuses).
+      - name: is_deleted
+        description: Заказ удалён в Postgres (остался только в журнале CDC).
+      - name: order_total
+        data_tests: [not_null, non_negative]
+      - name: items_total
+        description: Сумма позиций; NULL у удалённых заказов (позиции удалены каскадом).
+      - name: order_date
+        description: Дата создания в бизнес-таймзоне.
+        data_tests: [not_null]
+      - name: customer_order_number
+        description: Порядковый номер заказа клиента (1 - первый, включая отменённые).
+
+  - name: fct_order_items
+    description: Позиции заказов с атрибутами заказа и товара.
+    columns:
+      - name: order_item_id
+        data_tests: [not_null, unique]
+      - name: order_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('fct_orders')
+                field: order_id
+      - name: product_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: product_id
+      - name: quantity
+        data_tests: [non_negative]
+      - name: line_total
+        data_tests: [non_negative]
+
+  - name: dim_customers
+    description: Клиенты с агрегатами по заказам и покупкам. Без персональных данных.
+    columns:
+      - name: customer_id
+        data_tests: [not_null, unique]
+      - name: purchases_count
+        description: Число заказов с выручкой.
+      - name: lifetime_revenue
+        data_tests: [non_negative]
+      - name: cohort_month
+        description: Месяц первой покупки; NULL, если покупок не было.
+      - name: days_since_last_purchase
+        description: Recency для RFM, считается от сегодняшней даты в бизнес-таймзоне.
+
+  - name: dim_products
+    description: Товары с продажами за всю историю.
+    columns:
+      - name: product_id
+        data_tests: [not_null, unique]
+      - name: revenue
+        data_tests: [non_negative]
+
+  # ---------- sales ----------
+  - name: mart_sales_daily
+    description: >
+      Продажи по дням, сетка без пропусков. Метрики последних дней дозревают
+      (заказы ещё оплачиваются и отменяются), поэтому витрина пересобирается целиком.
+    columns:
+      - name: date
+        data_tests: [not_null, unique]
+      - name: gmv
+        description: Сумма всех оформленных заказов, включая отменённые.
+        data_tests: [non_negative]
+      - name: revenue
+        description: Сумма заказов со статусом из var revenue_statuses.
+        data_tests: [non_negative]
+      - name: avg_order_value
+        description: revenue / paid_orders; NULL в дни без оплаченных заказов.
+      - name: cancel_rate
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: is_complete_period
+        description: День закончился (false для сегодняшнего).
+
+  # ---------- customers ----------
+  - name: mart_cohort_retention
+    description: >
+      Месячный retention когорт по месяцу первой покупки. Строки есть только для наблюдаемых
+      месяцев: наблюдаемый месяц без покупок = 0, ещё не наступивший = строки нет.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [cohort_month, month_offset]
+    columns:
+      - name: month_offset
+        description: Сколько месяцев прошло от месяца когорты (0 - сам месяц первой покупки).
+      - name: retention_rate
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: is_complete_period
+        description: Месяц активности закончился.

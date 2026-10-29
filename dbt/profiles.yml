@@ -12,3 +12,8 @@ shop:
       password: "{{ env_var('CLICKHOUSE_PASSWORD') }}"
       schema: analytics
       threads: 4
+      custom_settings:
+        # По умолчанию ClickHouse в LEFT JOIN подставляет вместо отсутствующих значений
+        # дефолты типа (0, '', 1970-01-01), а не NULL. Для аналитики это опасно: клиент без
+        # заказов получил бы first_order_at = 1970-01-01. С join_use_nulls = 1 - как в ANSI SQL.
+        join_use_nulls: 1
