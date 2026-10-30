@@ -1,6 +1,8 @@
 # Полный сброс стенда: удаляет контейнеры и тома, поднимает стек заново
 # и регистрирует Debezium-коннектор.
 $ErrorActionPreference = "Stop"
+# PowerShell 7.3+: ошибка внешней программы (docker) тоже останавливает скрипт
+$PSNativeCommandUseErrorActionPreference = $true
 Set-Location $PSScriptRoot
 
 if (-not (Test-Path .env)) {

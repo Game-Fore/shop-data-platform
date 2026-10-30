@@ -6,9 +6,10 @@
 
 - **CDC**: PostgreSQL 16 → Debezium 3.0 (WAL, `pgoutput`) → Kafka 3.9 (KRaft) → Python-consumer (батчи, ручной commit offset'ов, ретраи) → ClickHouse 25.8 (`ReplacingMergeTree(_lsn, _is_deleted)`). Задержка p50 ≈ 1.5 с, доставка at-least-once с идемпотентным приёмником, проверена тестами отказов.
 - **Полная история изменений**: materialized view в ClickHouse сохраняет каждую версию заказа (переходы статусов, удаления), которую таблицы текущего состояния теряют после мержа.
-- **Хранилище в dbt** (`dbt-clickhouse`): raw → staging (views с `FINAL`) → marts (факты, измерения, продажи по дням, когортный retention, RFM, A/B), 81 модель и тест в `dbt build`, включая сверки между слоями, которые нашли реальные ошибки.
+- **Хранилище в dbt** (`dbt-clickhouse`): raw → staging (views с `FINAL`) → marts (факты, измерения, продажи по дням, когортный retention, RFM, A/B), 86 моделей и тестов в `dbt build`, включая сверки между слоями, которые нашли реальные ошибки.
 - **Реалистичная история**: воспроизводимый backfill за 180 дней (~16 тыс. заказов) на основе затухающего пуассоновского процесса покупок с Gamma-распределённой активностью клиентов, поэтому когорты и RFM-сегменты осмысленны.
 - **Аналитика в Jupyter**: продажи, воронка с учётом цензурирования, когорты и LTV, RFM с бэктестом, A/B-тест скидки: дизайн, MDE, SRM, A/A, z-тест, Уэлч, бутстреп, CUPED, delta-метод и решение с учётом прибыли.
+- **BI как код**: дашборд в Superset хранится в git как YAML и поднимается автоматически; доступ к ClickHouse только на чтение витрин.
 
 Проект вырос из [cdc-pg-clickhouse](https://github.com/Game-Fore/cdc-pg-clickhouse) и развивается по этапам:
 
@@ -17,7 +18,7 @@
 | 0 | CDC-пайплайн, сверка, замеры задержки, тесты отказов | ✅ |
 | 1 | Хранилище в dbt: raw → staging → marts, тесты, документация | ✅ |
 | 2 | Аналитика в Jupyter: GMV, воронка, когорты, RFM, A/B-тест | ✅ |
-| 3 | BI-дашборд в Superset | ⏳ |
+| 3 | BI-дашборд в Superset | ✅ |
 | 4 | Оркестрация в Airflow, курсы ЦБ РФ, витрины в рублях | ⏳ |
 | 5 | Надёжность: метрики consumer'а в Prometheus, алерты, DLQ | ⏳ |
 | 6 | Качество: pytest, ruff, GitHub Actions | ⏳ |
@@ -47,6 +48,7 @@ flowchart LR
     C -->|INSERT| RAW
     DBT[dbt build<br/>docker compose run] -.->|создаёт| STG
     DBT -.->|создаёт| MARTS
+    MARTS -->|только чтение| BI[Superset 6.1<br/>бизнес-дашборд]
     RAW --> GR[Grafana<br/>задержка CDC]
     K -.-> UI[kafka-ui]
 ```
@@ -59,6 +61,7 @@ flowchart LR
 | consumer.py | Kafka → ClickHouse, батчинг, at-least-once | — |
 | ClickHouse 25.8 | Хранилище: raw, staging, marts | 8123, 9000 |
 | dbt 1.11 + dbt-clickhouse | Трансформации и тесты данных (профиль `tools`) | 8081 (docs) |
+| Superset 6.1 | Бизнес-дашборд поверх витрин (профиль `bi`) | 8088 |
 | Grafana 12 | Технический дашборд CDC | 3000 |
 | kafka-ui | Просмотр топиков и коннекторов | 8080 |
 
@@ -91,6 +94,7 @@ flowchart LR
 ├── requirements-analytics.txt  # зависимости ноутбуков (отдельно от пайплайна)
 ├── analytics/                  # общий код: db.py, stats.py, rfm.py, plots.py
 ├── notebooks/                  # 01 продажи, 02 воронка, 03 когорты, 04 RFM, 05 A/B-тест
+├── superset/                   # образ, настройки, запуск; dashboards/ - дашборд как YAML
 ├── dbt/
 │   ├── Dockerfile, profiles.yml, dbt_project.yml, packages.yml
 │   ├── macros/                 # schema name, бизнес-дата, условие выручки
@@ -140,12 +144,17 @@ docker compose run --rm --service-ports dbt docs serve --host 0.0.0.0 --port 808
 # 8. Ноутбуки (venv должен быть активирован: ядро запускает python из PATH)
 pip install -r requirements-analytics.txt
 jupyter lab notebooks
+
+# 9. BI: http://localhost:8088, логин admin, пароль SUPERSET_ADMIN_PASSWORD из .env
+docker compose --profile bi up -d --wait superset
 ```
+
+Весь путь от `reset.ps1` до готового дашборда на чистом стенде занимает около 2.5 минут. Superset поднимайте после `dbt build`: чарты читают витрины.
 
 На Linux/macOS: `cp .env.example .env`, затем вместо `reset.ps1` выполните `docker compose up -d --wait` и зарегистрируйте коннектор:
 `curl -X POST -H "Content-Type: application/json" --data @connectors/postgres-shop.json localhost:8083/connectors`.
 
-Пауза и продолжение без потери данных: `docker compose stop` / `docker compose start`. Команда `docker compose down` удаляет контейнеры вместе с данными (у сервисов нет volume), после неё нужен `reset.ps1`.
+Пауза и продолжение без потери данных: `docker compose --profile bi stop` / `docker compose --profile bi start`. Команда `docker compose down` удаляет контейнеры вместе с данными (у сервисов нет volume), после неё нужен `reset.ps1`.
 
 | UI | Адрес |
 |---|---|
@@ -153,6 +162,7 @@ jupyter lab notebooks
 | kafka-ui | http://localhost:8080 |
 | Debezium REST | http://localhost:8083/connectors/shop-connector/status |
 | dbt docs | http://localhost:8081 (после `dbt docs serve`) |
+| Superset | http://localhost:8088/superset/dashboard/sales-and-customers/ |
 
 ## Как это устроено
 
@@ -175,7 +185,7 @@ jupyter lab notebooks
 | Жизненный цикл заказа | оплата через ~2 ч, отгрузка через 0.5–3 дня, доставка через 2–6 дней, 12% отмен до оплаты и 4% после |
 | Цены | случайное блуждание ±10% примерно раз в две недели; в позиции заказа фиксируется цена на момент покупки |
 
-`--seed 42` по умолчанию делает набор данных воспроизводимым. Бизнес-время лежит в `created_at`/`updated_at`; `_source_ts` и `_ingested_at` для backfill-данных показывают время загрузки, а не событий.
+`--seed` фиксирует генератор случайных чисел, но история отсчитывается от текущего момента, поэтому запуски в разное время дают разные наборы: те же порядки и выводы, но не те же числа. При двух прогонах выручка составила 12.6 и 14.3 млн, а конверсия в тесте выросла на 2.6 и 3.2 п.п. Числа в ноутбуках и README относятся к одному зафиксированному прогону. Бизнес-время лежит в `created_at`/`updated_at`; `_source_ts` и `_ingested_at` для backfill-данных показывают время загрузки, а не событий.
 
 **A/B-эксперимент** (`discount_10`, последние 42 дня истории). Группа назначается детерминированным хэшем `md5(id эксперимента:клиент)`, 50/50, назначение записывается в таблицу `experiment_assignments` и едет через CDC. Для группы treatment в окне эксперимента заложены истинные эффекты: цена ×0.90, доля неоплаченных заказов 8% вместо 12%, повторные покупки ×1.15. Ноутбук `05_ab_test` восстанавливает их по данным.
 
@@ -250,7 +260,7 @@ dbt запускается в контейнере (`docker compose run --rm dbt
 | raw | `shop` | source (таблицами владеет CDC) | таблицы consumer'а и журнал; проверка свежести по `_ingested_at` |
 | staging | `staging` | view | `FROM ... FINAL WHERE _is_deleted = 0`, переименование, бизнес-дата |
 | intermediate | — | ephemeral (CTE) | `int_order_status_events`: только смены статуса из журнала |
-| marts | `marts` | table, `ORDER BY` под типичный фильтр | `fct_orders`, `fct_order_items`, `dim_customers`, `dim_products`, `mart_sales_daily`, `mart_cohort_retention`, `mart_customer_rfm`, `mart_ab_users` |
+| marts | `marts` | table, `ORDER BY` под типичный фильтр | `fct_orders`, `fct_order_items`, `dim_customers`, `dim_products`, `mart_sales_daily`, `mart_cohort_retention`, `mart_customer_rfm`, `mart_ab_users`, `mart_order_funnel` |
 | seeds | `marts` | seed из CSV в git | `experiments`: реестр экспериментов, основная метрика фиксируется до анализа |
 
 **Почему marts — таблицы с полной пересборкой, а не incremental.** Метрики последних дней «дозревают»: вчерашний заказ сегодня оплачивается или отменяется (в данных это видно: доля отмен у заказов последних дней ~10%, у заказов старше месяца ~15%). Инкрементальной модели пришлось бы пересчитывать окно в несколько дней и отдельно обрабатывать удаления. На ~16.5k заказов полная сборка всего проекта с тестами занимает около 2.5 с.
@@ -268,7 +278,7 @@ dbt запускается в контейнере (`docker compose run --rm dbt
 | Когорта | месяц первой *покупки* (не регистрации и не первого заказа) |
 | Retention месяца N | доля когорты с покупкой в месяце N; ещё не наступившие месяцы отсутствуют, а не равны 0 |
 
-**Тесты** (81 узел в `dbt build`: модели, seed и 66 тестов): `unique`, `not_null`, `relationships`, `accepted_values`; из `dbt_utils` — `expression_is_true` (статусы идут по порядку), `accepted_range`, `unique_combination_of_columns`; свой generic-тест `non_negative`; singular-сверки:
+**Тесты** (86 узлов в `dbt build`: модели, seed и тесты): `unique`, `not_null`, `relationships`, `accepted_values`; из `dbt_utils` — `expression_is_true` (статусы идут по порядку), `accepted_range`, `unique_combination_of_columns`; свой generic-тест `non_negative`; singular-сверки:
 
 | Тест | Что проверяет |
 |---|---|
@@ -278,6 +288,7 @@ dbt запускается в контейнере (`docker compose run --rm dbt
 | `assert_sales_daily_has_no_gaps` | в витрине нет пропущенных дат |
 | `assert_cohort_month0_is_full` | в месяц когорты активны все её клиенты |
 | `assert_rfm_covers_all_buyers` | каждый покупатель попал в RFM-витрину ровно один раз |
+| `assert_funnel_is_monotonic` | воронка не расширяется, первый этап равен числу заказов |
 | `assert_experiment_no_srm` | размеры групп эксперимента соответствуют плану 50/50 (χ², p < 0.001) |
 
 **Особенности ClickHouse, найденные по ходу:**
@@ -288,10 +299,28 @@ dbt запускается в контейнере (`docker compose run --rm dbt
 | Алиас = имя колонки | алиас из `SELECT` виден в `WHERE`: `where cohort_month is not null` проверял `assumeNotNull(cohort_month)`, и 1043 клиента без покупок попали в «когорту 1970-01-01». Поймал тест `assert_cohort_month0_is_full` | фильтр во внутреннем подзапросе |
 | `status in (...)` на `LowCardinality(String)` | результат `LowCardinality(UInt8)`, такие колонки создавать запрещено | `cast(... as Bool)` |
 | Nullable в `ORDER BY` таблицы | после `join_use_nulls` колонки из правой части JOIN становятся Nullable, а Nullable-ключ запрещён | ключ из колонок левой таблицы или `assumeNotNull` после фильтра |
+| Алиас в `GROUP BY` от BI | Superset строит `toMonday(toDateTime(date)) AS date ... GROUP BY toMonday(toDateTime(date))`, и запрос падает с кодом 215 | `prefer_column_name_to_alias = 1` у пользователя `bi` |
+
+### BI: Superset
+
+![Дашборд Superset](docs/superset-dashboard.jpg)
+
+Дашборд «Продажи и клиенты» отделён от технической Grafana: Grafana отвечает на вопрос «работает ли пайплайн», Superset — «как идёт бизнес». Сервис в профиле `bi`, поэтому не поднимается вместе со стендом и не занимает память, когда не нужен (около 250 МБ в простое).
+
+| Решение | Почему |
+|---|---|
+| Дашборд как YAML в `superset/dashboards/` | метабаза живёт в Postgres без volume и стирается при `reset.ps1`, а из git дашборд поднимается сам; изменения видны в diff. Правки только в интерфейсе при перезапуске перезаписываются |
+| Импорт по типам объектов (`import_assets.py`) | CLI `import-dashboards` с `overwrite=True` перезаписывает только дашборд, а чарты и датасеты молча оставляет старыми |
+| Пользователь `bi`: только `SELECT` на `marts` | BI не видит персональные данные из `staging` и не может ничего изменить, даже из SQL Lab; лимит 60 с на запрос |
+| Метрики и логика в dbt, в датасетах только агрегаты | определения не расходятся с ноутбуками: воронка на дашборде совпала с ноутбуком 02. Знаменатель конверсии (`created_orders`) и флаг `is_full_week` лежат в витринах |
+| Метаданные в существующем Postgres, кэш в метабазе, без Redis | меньше контейнеров и памяти; для локального дашборда этого достаточно. Debezium читает только базу `shop` |
+| Столбцы вместо viz «воронка» | он рисует последний этап треугольником, даже если потерь на нём нет |
+| Удержание только по завершённым месяцам | на дашборде нет места для пометки, а незавершённый месяц выглядит как падение |
+| Сборка русского перевода в `Dockerfile` | в официальном образе только исходники перевода, без компиляции интерфейс остаётся английским |
 
 ## Аналитика
 
-Ноутбуки лежат в `notebooks/` и сохранены с выводом, поэтому графики видны прямо на GitHub. Запросы идут к витринам `marts`; статистика и правила вынесены в `analytics/`. Данные синтетические, поэтому цифры описывают модель магазина, а ценность — в методике.
+Ноутбуки лежат в `notebooks/` и сохранены с выводом одного прогона, поэтому графики видны прямо на GitHub. Запросы идут к витринам `marts`; статистика и правила вынесены в `analytics/`. Данные синтетические, поэтому цифры описывают модель магазина, а ценность — в методике.
 
 | Ноутбук | Вопрос | Главный результат |
 |---|---|---|
@@ -389,11 +418,10 @@ RESULT: CONSISTENT
 - **Нет себестоимости**: прибыль в A/B-тесте оценена при предполагаемой марже, а не измерена.
 - **Одна партиция на топик**: порядок событий по ключу гарантирован, но масштабирование consumer'а ограничено.
 - **Нет DLQ**: битые сообщения логируются и пропускаются (этап 5).
-- **Локальный стенд**: один брокер, replication factor 1, анонимный admin-доступ в Grafana, у сервисов нет volume. dbt пишет в ClickHouse тем же пользователем, что и consumer; в продакшене нужны отдельные пользователи с правами только на свои базы.
+- **Локальный стенд**: один брокер, replication factor 1, анонимный admin-доступ в Grafana, у сервисов нет volume. dbt пишет в ClickHouse тем же пользователем, что и consumer; в продакшене нужны отдельные пользователи с правами только на свои базы (для BI это уже так). У Superset единственный локальный администратор, сессия пропадает после `reset.ps1`.
 
 ## Дальше
 
-- Superset: бизнес-дашборд поверх `marts`, отдельно от технической Grafana.
 - Airflow: ежедневный `dbt build`, проверки качества, курсы валют ЦБ РФ и витрины в рублях.
 - Prometheus: метрики consumer'а (лаг, размер батча, ошибки), алерты, DLQ-топик.
 - CI: pytest для consumer'а и генератора, ruff, `dbt build` на стенде в GitHub Actions.
