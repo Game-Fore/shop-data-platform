@@ -1,0 +1,13 @@
+database_name: ClickHouse (витрины)
+sqlalchemy_uri: clickhousedb://bi:__CLICKHOUSE_BI_PASSWORD__@clickhouse:8123/marts
+cache_timeout: null
+expose_in_sqllab: true
+allow_run_async: false
+allow_ctas: false
+allow_cvas: false
+allow_dml: false
+allow_file_upload: false
+extra:
+  allows_virtual_table_explore: true
+uuid: fad8229e-994b-5197-9bcc-8504f16fd881
+version: 1.0.0

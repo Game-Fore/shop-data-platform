@@ -1,0 +1,21 @@
+slice_name: GMV, $
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  time_range: No filter
+  adhoc_filters: []
+  color_scheme: supersetColors
+  metric: gmv_sum
+  granularity_sqla: date
+  y_axis_format: ',.0f'
+  header_font_size: 0.4
+  subheader_font_size: 0.15
+  subheader: ''
+query_context: null
+cache_timeout: null
+uuid: c8a7e430-4446-5f2f-8faa-e872b2ace9e0
+version: 1.0.0
+dataset_uuid: b8a044eb-c535-5eb8-8dbe-3134bc21e5e0

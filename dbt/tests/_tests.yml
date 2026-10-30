@@ -25,3 +25,6 @@ data_tests:
 
   - name: assert_rfm_covers_all_buyers
     description: Каждый клиент с покупками попал в mart_customer_rfm, и лишних строк нет.
+
+  - name: assert_funnel_is_monotonic
+    description: На каждом следующем этапе воронки заказов не больше, чем на предыдущем, а первый этап равен числу заказов.

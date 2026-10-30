@@ -1,0 +1,229 @@
+table_name: mart_sales_daily
+main_dttm_col: date
+description: Продажи по дням.
+default_endpoint: null
+offset: 0
+cache_timeout: null
+catalog: null
+schema: marts
+sql: null
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: b8a044eb-c535-5eb8-8dbe-3134bc21e5e0
+metrics:
+- metric_name: revenue_sum
+  verbose_name: Выручка
+  metric_type: null
+  expression: sum(revenue)
+  description: null
+  d3format: ',.0f'
+  currency: null
+  extra:
+    warning_markdown: ''
+  warning_text: null
+- metric_name: gmv_sum
+  verbose_name: GMV
+  metric_type: null
+  expression: sum(gmv)
+  description: null
+  d3format: ',.0f'
+  currency: null
+  extra:
+    warning_markdown: ''
+  warning_text: null
+- metric_name: orders_sum
+  verbose_name: Заказы
+  metric_type: null
+  expression: sum(orders)
+  description: null
+  d3format: ',.0f'
+  currency: null
+  extra:
+    warning_markdown: ''
+  warning_text: null
+- metric_name: aov
+  verbose_name: Средний чек
+  metric_type: null
+  expression: sum(revenue) / nullIf(sum(paid_orders), 0)
+  description: null
+  d3format: ',.0f'
+  currency: null
+  extra:
+    warning_markdown: ''
+  warning_text: null
+columns:
+- column_name: date
+  verbose_name: Дата
+  is_dttm: true
+  is_active: true
+  type: Date
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: day_of_week
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: UInt8
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: orders
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: UInt64
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: paid_orders
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: UInt64
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: cancelled_orders
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: UInt64
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: gmv
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: Decimal(38, 2)
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: revenue
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: Decimal(38, 2)
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: buyers
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: UInt64
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: new_buyers
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: UInt64
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: units_sold
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: UInt64
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: avg_order_value
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: Nullable(Decimal(38, 2))
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: cancel_rate
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: Nullable(Float64)
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: is_complete_period
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: UInt8
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: is_full_week
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: UInt8
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+version: 1.0.0
+database_uuid: fad8229e-994b-5197-9bcc-8504f16fd881

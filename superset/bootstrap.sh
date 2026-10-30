@@ -19,14 +19,7 @@ superset fab create-admin \
 
 superset init
 
-# Пользователь bi может только читать базу marts (см. superset/init/clickhouse.sh)
-uri=$(python -c '
-import os
-from sqlalchemy.engine import URL
-print(URL.create("clickhousedb", username="bi", password=os.environ["CLICKHOUSE_BI_PASSWORD"],
-                 host=os.getenv("CLICKHOUSE_HOST", "clickhouse"), port=8123,
-                 database="marts").render_as_string(hide_password=False))
-')
-superset set-database-uri --database-name "ClickHouse (витрины)" --uri "$uri"
+# Подключение к ClickHouse (пользователь bi только на чтение marts), датасеты, чарты и дашборд - из git
+python /app/import_assets.py
 
 exec /usr/bin/run-server.sh

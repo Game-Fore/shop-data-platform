@@ -10,7 +10,7 @@ COPY compile_translations.py /tmp/compile_translations.py
 RUN /app/.venv/bin/python /tmp/compile_translations.py /app/superset/translations/ru/LC_MESSAGES
 
 COPY superset_config.py /app/pythonpath/superset_config.py
-COPY bootstrap.sh /app/bootstrap.sh
+COPY bootstrap.sh import_assets.py /app/
 RUN chmod +x /app/bootstrap.sh
 
 USER superset

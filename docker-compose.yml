@@ -203,6 +203,8 @@ services:
       SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD:-}
       SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-}
       CLICKHOUSE_BI_PASSWORD: ${CLICKHOUSE_BI_PASSWORD:-}
+    volumes:
+      - ./superset/dashboards:/app/dashboards:ro
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8088/health"]
       interval: 10s

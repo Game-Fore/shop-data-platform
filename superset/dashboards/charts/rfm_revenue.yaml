@@ -1,0 +1,28 @@
+slice_name: 'Сегменты RFM: выручка за всё время'
+description: null
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_bar
+params:
+  viz_type: echarts_timeseries_bar
+  time_range: No filter
+  adhoc_filters: []
+  color_scheme: supersetColors
+  x_axis: segment
+  groupby: []
+  row_limit: 20
+  orientation: horizontal
+  show_legend: false
+  rich_tooltip: true
+  y_axis_format: ',.0f'
+  show_value: true
+  xAxisForceCategorical: true
+  x_axis_sort_asc: true
+  metrics:
+  - revenue
+  x_axis_sort: revenue
+query_context: null
+cache_timeout: null
+uuid: e4607f1f-eefe-5fbe-aa63-b258d110c062
+version: 1.0.0
+dataset_uuid: 434ed9fe-eb6c-5ae2-b3e2-c7ef0f546dd5

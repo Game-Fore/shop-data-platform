@@ -1,0 +1,115 @@
+table_name: mart_order_funnel
+main_dttm_col: order_date
+description: Воронка заказа по дням; для конверсии брать is_matured.
+default_endpoint: null
+offset: 0
+cache_timeout: null
+catalog: null
+schema: marts
+sql: null
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: 03037cee-655b-549c-b480-9eff1f7d254a
+metrics:
+- metric_name: conversion
+  verbose_name: Доля от созданных
+  metric_type: null
+  expression: sum(orders) / nullIf(sum(created_orders), 0)
+  description: null
+  d3format: .1%
+  currency: null
+  extra:
+    warning_markdown: ''
+  warning_text: null
+columns:
+- column_name: order_date
+  verbose_name: Дата заказа
+  is_dttm: true
+  is_active: true
+  type: Date
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: is_matured
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: Nullable(UInt8)
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: stage
+  verbose_name: Этап
+  is_dttm: false
+  is_active: true
+  type: String
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: stage_order
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: UInt8
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: orders
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: UInt64
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: created_orders
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: UInt64
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: stage_label
+  verbose_name: Этап
+  is_dttm: false
+  is_active: true
+  type: String
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: concat(toString(stage_order), '. ', stage)
+  description: null
+  python_date_format: null
+  extra: {}
+version: 1.0.0
+database_uuid: fad8229e-994b-5197-9bcc-8504f16fd881

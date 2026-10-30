@@ -1,0 +1,38 @@
+slice_name: Выручка по категориям
+description: null
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_bar
+params:
+  viz_type: echarts_timeseries_bar
+  time_range: No filter
+  adhoc_filters:
+  - expressionType: SQL
+    clause: WHERE
+    sqlExpression: is_revenue = 1
+    subject: null
+    operator: null
+    comparator: null
+    isExtra: false
+    isNew: false
+    filterOptionName: filter_2fbeeced651b
+  color_scheme: supersetColors
+  x_axis: order_date
+  granularity_sqla: order_date
+  time_grain_sqla: P1M
+  metrics:
+  - revenue
+  groupby:
+  - category_ru
+  stack: Stack
+  row_limit: 1000
+  rich_tooltip: true
+  show_legend: true
+  legendOrientation: top
+  x_axis_time_format: '%Y-%m'
+  y_axis_format: ',.0f'
+query_context: null
+cache_timeout: null
+uuid: f8d93244-5066-5f53-ba39-5bd35eddbe26
+version: 1.0.0
+dataset_uuid: ce9e5d84-976c-5e28-8579-419b0b0537b4

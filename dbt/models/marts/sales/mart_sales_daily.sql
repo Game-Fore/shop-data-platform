@@ -11,7 +11,10 @@ with orders as (
 ),
 
 bounds as (
-    select min(order_date) as first_date, {{ business_today() }} as last_date
+    select
+        min(order_date) as first_date,
+        max(order_date) as last_order_date,
+        {{ business_today() }} as last_date
     from orders
 ),
 
@@ -56,7 +59,10 @@ select
     -- средний чек и доля отмен: NULL в дни без заказов (деление на 0 - не ноль, а "не определено")
     d.revenue / nullIf(d.paid_orders, 0) as avg_order_value,
     d.cancelled_orders / nullIf(d.orders, 0) as cancel_rate,
-    s.date < b.last_date as is_complete_period
+    s.date < b.last_date as is_complete_period,
+    -- неделя (пн-вс) целиком внутри данных: неполные недели на краях выглядели бы на недельных
+    -- графиках как обвал. Последний день с заказами обычно неполный, поэтому строгое <
+    toMonday(s.date) >= b.first_date and addDays(toMonday(s.date), 6) < b.last_order_date as is_full_week
 from spine as s
 cross join bounds as b
 left join daily as d on d.date = s.date

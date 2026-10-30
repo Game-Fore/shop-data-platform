@@ -1,0 +1,41 @@
+slice_name: 'Воронка заказа: доля от созданных'
+description: 'Только заказы старше 9 дней: у более свежих история ещё не закончилась.'
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_bar
+params:
+  viz_type: echarts_timeseries_bar
+  time_range: No filter
+  adhoc_filters:
+  - expressionType: SQL
+    clause: WHERE
+    sqlExpression: is_matured = 1
+    subject: null
+    operator: null
+    comparator: null
+    isExtra: false
+    isNew: false
+    filterOptionName: filter_3296f97acce7
+  color_scheme: supersetColors
+  x_axis: stage_label
+  granularity_sqla: order_date
+  metrics:
+  - conversion
+  groupby: []
+  row_limit: 10
+  orientation: horizontal
+  show_legend: false
+  rich_tooltip: true
+  y_axis_format: .1%
+  show_value: true
+  xAxisForceCategorical: true
+  x_axis_sort: stage_label
+  x_axis_sort_asc: false
+  y_axis_bounds:
+  - 0
+  - 1
+query_context: null
+cache_timeout: null
+uuid: 1378d458-75ce-5215-bb6a-f3135ca2a41f
+version: 1.0.0
+dataset_uuid: 03037cee-655b-549c-b480-9eff1f7d254a

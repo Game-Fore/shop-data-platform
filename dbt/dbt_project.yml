@@ -13,6 +13,9 @@ vars:
   business_tz: "Europe/Moscow"
   # статусы, которые считаются выручкой: деньги получены (отменённые и неоплаченные - нет)
   revenue_statuses: ["paid", "shipped", "delivered"]
+  # возраст, после которого заказ считается завершённым: 99-й перцентиль времени до финального
+  # статуса (notebooks/02_funnel.ipynb)
+  funnel_maturity_days: 9
 
 models:
   shop:

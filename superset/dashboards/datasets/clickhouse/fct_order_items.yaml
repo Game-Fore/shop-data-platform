@@ -1,0 +1,188 @@
+table_name: fct_order_items
+main_dttm_col: order_date
+description: Позиции заказов.
+default_endpoint: null
+offset: 0
+cache_timeout: null
+catalog: null
+schema: marts
+sql: null
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: ce9e5d84-976c-5e28-8579-419b0b0537b4
+metrics:
+- metric_name: revenue
+  verbose_name: Выручка
+  metric_type: null
+  expression: sum(line_total)
+  description: null
+  d3format: ',.0f'
+  currency: null
+  extra:
+    warning_markdown: ''
+  warning_text: null
+columns:
+- column_name: order_item_id
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: UInt32
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: order_id
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: UInt32
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: customer_id
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: Nullable(UInt32)
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: product_id
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: UInt32
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: product_name
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: Nullable(String)
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: category
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: LowCardinality(Nullable(String))
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: quantity
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: UInt32
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: unit_price
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: Decimal(10, 2)
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: line_total
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: Decimal(10, 2)
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: order_date
+  verbose_name: Дата заказа
+  is_dttm: true
+  is_active: true
+  type: Nullable(Date)
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: status
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: Nullable(String)
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: is_revenue
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: Nullable(Bool)
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: category_ru
+  verbose_name: Категория
+  is_dttm: false
+  is_active: true
+  type: String
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: multiIf(category = 'electronics', 'Электроника', category = 'home', 'Дом', category = 'sport', 'Спорт',
+    category = 'books', 'Книги', category)
+  description: null
+  python_date_format: null
+  extra: {}
+version: 1.0.0
+database_uuid: fad8229e-994b-5197-9bcc-8504f16fd881

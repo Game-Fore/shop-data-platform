@@ -1,0 +1,44 @@
+slice_name: Удержание по когортам первой покупки
+description: 'Только завершённые месяцы. Месяц 0 скрыт: он всегда 100%.'
+certified_by: null
+certification_details: null
+viz_type: heatmap_v2
+params:
+  viz_type: heatmap_v2
+  time_range: No filter
+  adhoc_filters:
+  - expressionType: SQL
+    clause: WHERE
+    sqlExpression: month_offset > 0 and is_complete_period = 1
+    subject: null
+    operator: null
+    comparator: null
+    isExtra: false
+    isNew: false
+    filterOptionName: filter_8c0179fd7dbc
+  color_scheme: supersetColors
+  x_axis: month_label
+  groupby: cohort_label
+  metric: retention
+  sort_x_axis: alpha_asc
+  sort_y_axis: alpha_desc
+  normalize_across: heatmap
+  legend_type: continuous
+  linear_color_scheme: schemeBlues
+  xscale_interval: -1
+  yscale_interval: -1
+  left_margin: 80
+  bottom_margin: auto
+  value_bounds:
+  - null
+  - null
+  y_axis_format: .0%
+  show_legend: true
+  show_percentage: false
+  show_values: true
+  row_limit: 1000
+query_context: null
+cache_timeout: null
+uuid: 41b9a279-3ec1-51f3-8f8b-be2e697147fe
+version: 1.0.0
+dataset_uuid: 273d35fc-b566-5be9-8a34-06813def5a08

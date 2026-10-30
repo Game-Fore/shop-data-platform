@@ -1,0 +1,41 @@
+slice_name: Средний чек по неделям
+description: С 17.09 половина клиентов покупает со скидкой 10% (A/B-эксперимент), это снижает средний чек.
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_line
+params:
+  viz_type: echarts_timeseries_line
+  time_range: No filter
+  adhoc_filters:
+  - expressionType: SQL
+    clause: WHERE
+    sqlExpression: is_full_week = 1
+    subject: null
+    operator: null
+    comparator: null
+    isExtra: false
+    isNew: false
+    filterOptionName: filter_04a055700458
+  color_scheme: supersetColors
+  x_axis: date
+  granularity_sqla: date
+  time_grain_sqla: P1W
+  groupby: []
+  row_limit: 1000
+  rich_tooltip: true
+  show_legend: false
+  legendOrientation: top
+  x_axis_time_format: '%d.%m.%y'
+  y_axis_format: ',.0f'
+  markerEnabled: true
+  markerSize: 4
+  truncateYAxis: true
+  x_axis_title_margin: 15
+  y_axis_title_margin: 15
+  metrics:
+  - aov
+query_context: null
+cache_timeout: null
+uuid: 832164da-a53a-5c9e-b449-c9e79194cf9d
+version: 1.0.0
+dataset_uuid: b8a044eb-c535-5eb8-8dbe-3134bc21e5e0

@@ -1,0 +1,299 @@
+dashboard_title: Продажи и клиенты
+description: null
+css: ''
+slug: sales-and-customers
+certified_by: null
+certification_details: null
+published: true
+uuid: 492c55c3-8b5c-5b7d-931d-6b8d2cafd6fa
+position:
+  DASHBOARD_VERSION_KEY: v2
+  ROOT_ID:
+    id: ROOT_ID
+    type: ROOT
+    children:
+    - GRID_ID
+  GRID_ID:
+    id: GRID_ID
+    type: GRID
+    parents:
+    - ROOT_ID
+    children:
+    - ROW-0
+    - ROW-1
+    - ROW-2
+    - ROW-3
+    - ROW-4
+    - ROW-5
+  HEADER_ID:
+    id: HEADER_ID
+    type: HEADER
+    meta:
+      text: Продажи и клиенты
+  ROW-0:
+    id: ROW-0
+    type: ROW
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    children:
+    - CHART-kpi_revenue
+    - CHART-kpi_gmv
+    - CHART-kpi_aov
+    - CHART-kpi_orders
+  CHART-kpi_revenue:
+    id: CHART-kpi_revenue
+    type: CHART
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-0
+    children: []
+    meta:
+      chartId: 1
+      width: 3
+      height: 16
+      sliceName: Выручка, $
+      uuid: b79a6221-74a3-5443-bd0b-494d0b339015
+  CHART-kpi_gmv:
+    id: CHART-kpi_gmv
+    type: CHART
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-0
+    children: []
+    meta:
+      chartId: 2
+      width: 3
+      height: 16
+      sliceName: GMV, $
+      uuid: c8a7e430-4446-5f2f-8faa-e872b2ace9e0
+  CHART-kpi_aov:
+    id: CHART-kpi_aov
+    type: CHART
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-0
+    children: []
+    meta:
+      chartId: 3
+      width: 3
+      height: 16
+      sliceName: Средний чек, $
+      uuid: cc04ce6c-fc77-5057-9774-1ac1d5fc1db3
+  CHART-kpi_orders:
+    id: CHART-kpi_orders
+    type: CHART
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-0
+    children: []
+    meta:
+      chartId: 4
+      width: 3
+      height: 16
+      sliceName: Заказы
+      uuid: f83dcdc7-64ea-594a-a249-7d95198ba173
+  ROW-1:
+    id: ROW-1
+    type: ROW
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    children:
+    - CHART-sales_weekly
+  CHART-sales_weekly:
+    id: CHART-sales_weekly
+    type: CHART
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-1
+    children: []
+    meta:
+      chartId: 5
+      width: 12
+      height: 50
+      sliceName: GMV и выручка по неделям
+      uuid: 956cba1b-c7a4-5634-8b01-973dc472cf3e
+  ROW-2:
+    id: ROW-2
+    type: ROW
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    children:
+    - CHART-orders_weekly
+    - CHART-aov_weekly
+  CHART-orders_weekly:
+    id: CHART-orders_weekly
+    type: CHART
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-2
+    children: []
+    meta:
+      chartId: 6
+      width: 6
+      height: 44
+      sliceName: Заказов в неделю
+      uuid: 2c3a6964-30ac-5edc-b363-ee422e6f5eae
+  CHART-aov_weekly:
+    id: CHART-aov_weekly
+    type: CHART
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-2
+    children: []
+    meta:
+      chartId: 7
+      width: 6
+      height: 44
+      sliceName: Средний чек по неделям
+      uuid: 832164da-a53a-5c9e-b449-c9e79194cf9d
+  ROW-3:
+    id: ROW-3
+    type: ROW
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    children:
+    - CHART-categories_monthly
+    - CHART-funnel
+  CHART-categories_monthly:
+    id: CHART-categories_monthly
+    type: CHART
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-3
+    children: []
+    meta:
+      chartId: 8
+      width: 6
+      height: 50
+      sliceName: Выручка по категориям
+      uuid: f8d93244-5066-5f53-ba39-5bd35eddbe26
+  CHART-funnel:
+    id: CHART-funnel
+    type: CHART
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-3
+    children: []
+    meta:
+      chartId: 9
+      width: 6
+      height: 50
+      sliceName: 'Воронка заказа: доля от созданных'
+      uuid: 1378d458-75ce-5215-bb6a-f3135ca2a41f
+  ROW-4:
+    id: ROW-4
+    type: ROW
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    children:
+    - CHART-retention_heatmap
+  CHART-retention_heatmap:
+    id: CHART-retention_heatmap
+    type: CHART
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-4
+    children: []
+    meta:
+      chartId: 10
+      width: 12
+      height: 50
+      sliceName: Удержание по когортам первой покупки
+      uuid: 41b9a279-3ec1-51f3-8f8b-be2e697147fe
+  ROW-5:
+    id: ROW-5
+    type: ROW
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    children:
+    - CHART-rfm_customers
+    - CHART-rfm_revenue
+  CHART-rfm_customers:
+    id: CHART-rfm_customers
+    type: CHART
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-5
+    children: []
+    meta:
+      chartId: 11
+      width: 6
+      height: 50
+      sliceName: 'Сегменты RFM: клиенты'
+      uuid: bc143549-f36e-5a13-92fc-fba1c16fa8d3
+  CHART-rfm_revenue:
+    id: CHART-rfm_revenue
+    type: CHART
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-5
+    children: []
+    meta:
+      chartId: 12
+      width: 6
+      height: 50
+      sliceName: 'Сегменты RFM: выручка за всё время'
+      uuid: e4607f1f-eefe-5fbe-aa63-b258d110c062
+metadata:
+  native_filter_configuration:
+  - id: NATIVE_FILTER-period
+    name: Период
+    filterType: filter_time
+    type: NATIVE_FILTER
+    targets:
+    - {}
+    controlValues:
+      enableEmptyFilter: false
+    cascadeParentIds: []
+    description: ''
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded:
+      - 10
+      - 11
+      - 12
+  timed_refresh_immune_slices: []
+  expanded_slices: {}
+  refresh_frequency: 0
+  default_filters: '{}'
+  color_scheme: ''
+  label_colors: {}
+  shared_label_colors: []
+  color_scheme_domain: []
+  cross_filters_enabled: false
+version: 1.0.0

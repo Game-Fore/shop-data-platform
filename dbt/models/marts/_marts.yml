@@ -107,6 +107,29 @@ models:
                 max_value: 1
       - name: is_complete_period
         description: День закончился (false для сегодняшнего).
+      - name: is_full_week
+        description: Неделя (пн-вс) целиком внутри данных; для недельных графиков без ложного спада на краях.
+
+  - name: mart_order_funnel
+    description: >
+      Воронка заказа по дням: сколько заказов дошло до этапа. Для конверсии брать только
+      is_matured: у свежих заказов история ещё не закончилась (правое цензурирование).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [order_date, is_matured, stage]
+    columns:
+      - name: stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["Создан", "Оплачен", "Отгружен", "Доставлен"]
+      - name: is_matured
+        description: Заказ старше var funnel_maturity_days дней от последнего заказа в данных.
+      - name: orders
+        data_tests: [non_negative]
+      - name: created_orders
+        description: Заказов создано в тот же день; знаменатель конверсии этапа.
 
   # ---------- customers ----------
   - name: mart_cohort_retention
