@@ -10,7 +10,7 @@ if (-not (Test-Path .env)) {
 }
 
 # все профили: иначе запущенный Superset держит сеть, и она не удалится
-docker compose --profile bi --profile tools down -v
+docker compose --profile bi --profile orch --profile tools down -v
 docker compose up -d --wait
 
 # В JSON пароль не хранится: ${env:POSTGRES_PASSWORD} подставляет сам Kafka Connect

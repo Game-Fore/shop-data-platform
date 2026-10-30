@@ -7,6 +7,8 @@ model-paths: ["models"]
 macro-paths: ["macros"]
 test-paths: ["tests"]
 clean-targets: ["target", "dbt_packages"]
+# в образе Airflow пакеты зашиты при сборке (airflow/Dockerfile)
+packages-install-path: "{{ env_var('DBT_PACKAGES_PATH', 'dbt_packages') }}"
 
 vars:
   # бизнес-день считаем по Москве: заказ в 01:00 МСК относится к "сегодня", а не ко "вчера" по UTC

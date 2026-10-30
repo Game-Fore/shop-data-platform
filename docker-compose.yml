@@ -1,3 +1,28 @@
+# Общие настройки сервисов Airflow (профиль orch). ${VAR:-}, а не ${VAR:?}: см. комментарий у профиля bi.
+x-airflow-common: &airflow-common
+  build:
+    context: ./dbt
+    dockerfile: ../airflow/Dockerfile
+  image: shop-airflow:3.3.2
+  profiles: ["orch"]
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:-}@postgres:5432/airflow
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-api-server:8080/execution/
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_SECRET_KEY:-}
+    AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-}
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: Europe/Moscow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    # локальный стенд: вход без пароля, порт открыт только на 127.0.0.1 (как анонимный доступ в Grafana)
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
+    CLICKHOUSE_USER: ${CLICKHOUSE_USER:?set in .env}
+    CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set in .env}
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags:ro
+    - ./dbt:/opt/dbt
+
 services:
   postgres:
     image: postgres:16
@@ -211,3 +236,64 @@ services:
       timeout: 5s
       retries: 30
       start_period: 60s
+
+  # --- Оркестрация (профиль orch): docker compose --profile orch up -d --wait airflow-api-server ---
+  orch-init-postgres:
+    image: postgres:16
+    profiles: ["orch"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:?set in .env}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:-}
+    volumes:
+      - ./airflow/init/postgres.sh:/init.sh:ro
+    entrypoint: ["bash", "/init.sh"]
+
+  airflow-init:
+    <<: *airflow-common
+    depends_on:
+      orch-init-postgres:
+        condition: service_completed_successfully
+    entrypoint: ["airflow", "db", "migrate"]
+
+  airflow-api-server:
+    <<: *airflow-common
+    container_name: airflow-api-server
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      airflow-scheduler:
+        condition: service_started
+      airflow-dag-processor:
+        condition: service_started
+      clickhouse:
+        condition: service_healthy
+    command: api-server
+    ports:
+      - "127.0.0.1:8082:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    command: scheduler
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    container_name: airflow-dag-processor
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    command: dag-processor
