@@ -152,3 +152,60 @@ services:
       - ./dbt:/dbt
     ports:
       - "8081:8081"  # dbt docs serve (нужен --service-ports)
+
+  # --- BI (профиль bi): docker compose --profile bi up -d superset ---
+  # Переменные BI заданы как ${VAR:-}, а не ${VAR:?}: compose подставляет их во всём файле,
+  # даже для неактивных профилей, и без нового пароля в .env перестал бы работать весь стенд.
+  # Наличие значений проверяют сами скрипты.
+  bi-init-postgres:
+    image: postgres:16
+    profiles: ["bi"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:?set in .env}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD:-}
+    volumes:
+      - ./superset/init/postgres.sh:/init.sh:ro
+    entrypoint: ["bash", "/init.sh"]
+
+  bi-init-clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    profiles: ["bi"]
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:?set in .env}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set in .env}
+      CLICKHOUSE_BI_PASSWORD: ${CLICKHOUSE_BI_PASSWORD:-}
+    volumes:
+      - ./superset/init/clickhouse.sh:/init.sh:ro
+    entrypoint: ["bash", "/init.sh"]
+
+  superset:
+    build: ./superset
+    image: shop-superset:6.1.0
+    container_name: superset
+    profiles: ["bi"]
+    depends_on:
+      bi-init-postgres:
+        condition: service_completed_successfully
+      bi-init-clickhouse:
+        condition: service_completed_successfully
+    ports:
+      - "8088:8088"
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-}
+      SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD:-}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-}
+      CLICKHOUSE_BI_PASSWORD: ${CLICKHOUSE_BI_PASSWORD:-}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8088/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s

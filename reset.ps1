@@ -7,7 +7,8 @@ if (-not (Test-Path .env)) {
     throw "Нет файла .env. Создайте его: Copy-Item .env.example .env и задайте пароли."
 }
 
-docker compose down -v
+# все профили: иначе запущенный Superset держит сеть, и она не удалится
+docker compose --profile bi --profile tools down -v
 docker compose up -d --wait
 
 # В JSON пароль не хранится: ${env:POSTGRES_PASSWORD} подставляет сам Kafka Connect
