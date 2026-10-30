@@ -73,7 +73,7 @@ models:
       - name: cohort_month
         description: Месяц первой покупки; NULL, если покупок не было.
       - name: days_since_last_purchase
-        description: Recency для RFM, считается от сегодняшней даты в бизнес-таймзоне.
+        description: Recency для RFM, считается от даты среза (день последнего заказа в данных).
 
   - name: dim_products
     description: Товары с продажами за всю историю.
@@ -106,7 +106,7 @@ models:
                 min_value: 0
                 max_value: 1
       - name: is_complete_period
-        description: День закончился (false для сегодняшнего).
+        description: День закончился (false для дня среза, то есть дня последнего заказа в данных).
       - name: is_full_week
         description: Неделя (пн-вс) целиком внутри данных; для недельных графиков без ложного спада на краях.
 
@@ -150,7 +150,7 @@ models:
                 min_value: 0
                 max_value: 1
       - name: is_complete_period
-        description: Месяц активности закончился.
+        description: Месяц активности наблюдается целиком (false для месяца даты среза).
 
   - name: mart_customer_rfm
     description: >

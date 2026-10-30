@@ -1,9 +1,12 @@
-"""Историческая нагрузка: клиенты и заказы за последние N дней.
+"""Историческая нагрузка: клиенты и заказы за N дней до конца истории (end_at).
 
 Идея: сначала в памяти строится вся история как список событий с бизнес-временем
 (регистрация клиента, заказ, смена статуса, смена цены), затем события сортируются
 по времени и пишутся в PostgreSQL обычными INSERT/UPDATE. Поэтому backfill идёт
 через тот же CDC-пайплайн, что и живая нагрузка, а LSN растёт вместе со временем событий.
+
+История отсчитывается от фиксированной даты end_at, а не от момента запуска: один seed и один
+end_at дают одни и те же данные, поэтому числа в ноутбуках и README можно воспроизвести.
 
 Модель поведения:
 - новые клиенты приходят пуассоновским потоком с линейным ростом и недельной сезонностью;
@@ -12,7 +15,7 @@
   lambda_i * exp(-age / REPEAT_DECAY_DAYS): активность клиента затухает (это даёт
   реалистичный retention), а lambda_i ~ Gamma (клиенты сильно различаются - нужно для RFM);
 - статусы идут new -> paid -> shipped -> delivered с отменами; переходы, которые
-  "ещё не наступили" (позже now), не применяются - свежие заказы остаются в пути.
+  "ещё не наступили" (позже end_at), не применяются - свежие заказы остаются в пути.
 
 A/B-эксперимент (последние EXPERIMENT_DAYS дней): каждый клиент назначается в группу
 детерминированным хэшем; в группе treatment заказы в окне эксперимента получают скидку,
@@ -43,6 +46,8 @@ REPEAT_SHAPE = 0.6                # форма Gamma: < 1 -> много "раз�
 REPEAT_DECAY_DAYS = 60.0          # характерное время затухания активности клиента
 PRICE_CHANGE_EVERY_DAYS = 14.0    # в среднем раз в две недели на товар
 BATCH_SIZE = 500                  # событий на транзакцию
+# конец истории по умолчанию: начало истории и окно эксперимента считаются от него
+DEFAULT_END_AT = datetime(2026, 10, 29, 12, 0, tzinfo=timezone.utc)
 
 # A/B-эксперимент. Длительность должна совпадать с dbt/seeds/experiments.csv.
 EXPERIMENT_ID = "discount_10"
@@ -83,6 +88,14 @@ class Event:
     payload: tuple = field(compare=False)
 
 
+def parse_end_at(value: str) -> datetime:
+    """ISO-дата или дата со временем; без таймзоны считается UTC."""
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def poisson(lam: float) -> int:
     # алгоритм Кнута; для lam порядка десятков точности double хватает
     threshold, k, p = math.exp(-lam), 0, 1.0
@@ -113,7 +126,7 @@ def assign_variant(customer_key: int) -> str:
 
 
 def lifecycle(created: datetime, unpaid_prob: float = UNPAID_PROB) -> list[tuple[datetime, str]]:
-    """Переходы статусов заказа после создания (без учёта now)."""
+    """Переходы статусов заказа после создания (без учёта end_at)."""
     if random.random() < unpaid_prob:  # не оплатили
         return [(created + hours(random.expovariate(1 / 20)), "cancelled")]
     paid = created + hours(random.expovariate(1 / 3))
@@ -125,9 +138,9 @@ def lifecycle(created: datetime, unpaid_prob: float = UNPAID_PROB) -> list[tuple
 
 
 def repeat_order_times(
-    signup: datetime, now: datetime, boost: Callable[[datetime], float]
+    signup: datetime, end_at: datetime, boost: Callable[[datetime], float]
 ) -> list[datetime]:
-    """Повторные заказы: интенсивность lambda_i * exp(-t / tau) * boost(t) на [signup, now].
+    """Повторные заказы: интенсивность lambda_i * exp(-t / tau) * boost(t) на [signup, end_at].
 
     boost(t) in [1, REPEAT_BOOST] - эффект эксперимента. Реализован прореживанием: процесс
     генерируется с интенсивностью, умноженной на максимум REPEAT_BOOST, и каждый заказ
@@ -135,7 +148,7 @@ def repeat_order_times(
     интенсивностью, а случайные числа для control и treatment тратятся одинаково.
     """
     tau = REPEAT_DECAY_DAYS
-    horizon = (now - signup).total_seconds() / 86400
+    horizon = (end_at - signup).total_seconds() / 86400
     lam_i = random.gammavariate(REPEAT_SHAPE, REPEAT_MEAN / REPEAT_SHAPE) / tau
     mass = 1 - math.exp(-horizon / tau)       # доля "активности", попадающая в окно
     times = []
@@ -147,16 +160,16 @@ def repeat_order_times(
         if random.random() > WEEKDAY_WEIGHT[day.weekday()] / max(WEEKDAY_WEIGHT):
             continue
         ts = at_random_hour(day)
-        if not signup < ts < now:
+        if not signup < ts < end_at:
             continue
         if random.random() < boost(ts) / REPEAT_BOOST:
             times.append(ts)
     return times
 
 
-def build_events(days: int, product_ids: list[int], now: datetime) -> list[Event]:
-    start = now - timedelta(days=days)
-    experiment_start = max(start, now - timedelta(days=EXPERIMENT_DAYS))
+def build_events(days: int, product_ids: list[int], end_at: datetime) -> list[Event]:
+    start = end_at - timedelta(days=days)
+    experiment_start = max(start, end_at - timedelta(days=EXPERIMENT_DAYS))
     events: list[Event] = []
 
     def add(ts, kind, *payload):
@@ -173,7 +186,7 @@ def build_events(days: int, product_ids: list[int], now: datetime) -> list[Event
         add(ts, "order", order)
         unpaid_prob = TREATMENT_UNPAID_PROB if is_treated else UNPAID_PROB
         for status_ts, status in lifecycle(ts, unpaid_prob):
-            if status_ts < now:
+            if status_ts < end_at:
                 add(status_ts, "status", order, status)
 
     customer_key = 0
@@ -183,7 +196,7 @@ def build_events(days: int, product_ids: list[int], now: datetime) -> list[Event
         lam = NEW_CUSTOMERS_PER_DAY * growth * WEEKDAY_WEIGHT[day.weekday()]
         for _ in range(poisson(lam)):
             signup = at_random_hour(day)
-            if signup >= now:
+            if signup >= end_at:
                 continue
             customer_key += 1
             customer = Customer(signup, variant=assign_variant(customer_key))
@@ -193,15 +206,15 @@ def build_events(days: int, product_ids: list[int], now: datetime) -> list[Event
             add(max(signup, experiment_start), "assignment", customer)
             if random.random() < FIRST_ORDER_PROB:
                 first = signup + timedelta(minutes=5 + random.expovariate(1 / 30))
-                if first < now:
+                if first < end_at:
                     add_order(customer, first)
             boost = lambda ts, c=customer: REPEAT_BOOST if treated(c, ts) else 1.0  # noqa: E731
-            for ts in repeat_order_times(signup, now, boost):
+            for ts in repeat_order_times(signup, end_at, boost):
                 add_order(customer, ts)
 
     for pid in product_ids:
         ts = start + timedelta(days=random.expovariate(1 / PRICE_CHANGE_EVERY_DAYS))
-        while ts < now:
+        while ts < end_at:
             add(ts, "price", pid, random.uniform(0.9, 1.1))
             ts += timedelta(days=random.expovariate(1 / PRICE_CHANGE_EVERY_DAYS))
 
@@ -262,7 +275,7 @@ def apply(cur, ev: Event, prices: dict[int, Decimal], fake: Faker):
         cur.execute("UPDATE products SET price = %s WHERE id = %s", (prices[pid], pid))
 
 
-def run_backfill(conn, days: int, seed: int):
+def run_backfill(conn, days: int, seed: int, end_at: datetime = DEFAULT_END_AT):
     random.seed(seed)
     fake = Faker("ru_RU")
     fake.seed_instance(seed)
@@ -274,11 +287,10 @@ def run_backfill(conn, days: int, seed: int):
         cur.execute("SELECT id, price FROM products ORDER BY id")
         prices = dict(cur.fetchall())
 
-    now = datetime.now(timezone.utc)
-    events = build_events(days, list(prices), now)
+    events = build_events(days, list(prices), end_at)
     counts = {k: sum(e.kind == k for e in events)
               for k in ("customer", "assignment", "order", "status", "price")}
-    log.info("backfill %d days (seed=%d): %s", days, seed, counts)
+    log.info("backfill %d days to %s (seed=%d): %s", days, end_at.isoformat(), seed, counts)
 
     for i in range(0, len(events), BATCH_SIZE):
         with conn.transaction(), conn.cursor() as cur:

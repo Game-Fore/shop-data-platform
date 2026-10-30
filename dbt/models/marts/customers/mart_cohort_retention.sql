@@ -3,9 +3,10 @@
 -- Месячный retention по когортам.
 -- Когорта = месяц первой покупки; клиент "активен" в месяце, если сделал в нём покупку.
 --
--- Сетка cohort x month_offset строится только до текущего месяца включительно:
+-- Сетка cohort x month_offset строится только до месяца даты среза включительно
+-- (последний заказ в данных, см. макрос data_cutoff_date):
 --   * наблюдаемый месяц без покупок = строка с 0 (клиенты действительно не вернулись);
---   * ненаблюдаемый (ещё не наступил) = строки нет, в pivot это NULL.
+--   * ненаблюдаемый (позже даты среза) = строки нет, в pivot это NULL.
 -- Если ненаблюдаемые ячейки заполнить нулями, средний retention по когортам будет занижен:
 -- молодые когорты "потянут вниз" поздние месяцы, которых они просто не прожили.
 with purchases as (
@@ -43,7 +44,7 @@ grid as (
         cohort_month,
         cohort_size,
         arrayJoin(range(toUInt32(
-            dateDiff('month', cohort_month, toStartOfMonth({{ business_today() }})) + 1
+            dateDiff('month', cohort_month, toStartOfMonth({{ data_cutoff_date() }})) + 1
         ))) as month_offset
     from cohorts
 ),
@@ -67,8 +68,8 @@ select
     coalesce(a.active_customers, 0) as active_customers,
     coalesce(a.active_customers, 0) / g.cohort_size as retention_rate,
     coalesce(a.revenue, 0) as revenue,
-    -- текущий месяц ещё идёт: его retention вырастет к концу месяца
-    addMonths(g.cohort_month, g.month_offset) < toStartOfMonth({{ business_today() }}) as is_complete_period
+    -- месяц даты среза наблюдается не целиком: при новых данных его retention вырастет
+    addMonths(g.cohort_month, g.month_offset) < toStartOfMonth({{ data_cutoff_date() }}) as is_complete_period
 from grid as g
 left join activity as a
     on a.cohort_month = g.cohort_month and a.month_offset = g.month_offset

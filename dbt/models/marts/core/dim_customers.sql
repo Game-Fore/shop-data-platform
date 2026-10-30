@@ -32,6 +32,6 @@ select
     o.last_purchase_date as last_purchase_date,
     -- когорта = месяц первой покупки; у клиентов без покупок NULL
     toStartOfMonth(o.first_purchase_date) as cohort_month,
-    dateDiff('day', o.last_purchase_date, {{ business_today() }}) as days_since_last_purchase
+    dateDiff('day', o.last_purchase_date, {{ data_cutoff_date() }}) as days_since_last_purchase
 from {{ ref('stg_customers') }} as c
 left join orders as o on o.customer_id = c.customer_id

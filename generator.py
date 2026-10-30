@@ -7,7 +7,7 @@ import psycopg
 
 
 
-from backfill import run_backfill
+from backfill import DEFAULT_END_AT, parse_end_at, run_backfill
 from collections import Counter
 from decimal import Decimal
 from dotenv import load_dotenv
@@ -125,13 +125,16 @@ def main():
     parser.add_argument("--backfill-days", type=int, default=0,
                         help="сгенерировать историю за N дней (на пустой базе) и выйти")
     parser.add_argument("--seed", type=int, default=42, help="seed для воспроизводимого backfill")
+    parser.add_argument("--end-at", type=parse_end_at, default=DEFAULT_END_AT,
+                        help="конец истории backfill, ISO-дата (без таймзоны = UTC); "
+                             f"по умолчанию {DEFAULT_END_AT.isoformat()}")
     args = parser.parse_args()
 
     funcs, weights = zip(*ACTIONS)
 
     with psycopg.connect(args.dsn, autocommit=True) as conn:
         if args.backfill_days:
-            run_backfill(conn, args.backfill_days, args.seed)
+            run_backfill(conn, args.backfill_days, args.seed, args.end_at)
             return
 
         # стартовый набор клиентов
