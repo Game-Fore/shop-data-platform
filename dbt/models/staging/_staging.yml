@@ -1,4 +1,15 @@
 models:
+  - name: stg_cbr_rates
+    description: Официальный курс ЦБ РФ, только дни публикации.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [currency_code, rate_date]
+    columns:
+      - name: rub_per_unit
+        description: Рублей за единицу валюты.
+        data_tests: [not_null]
+
   - name: stg_customers
     description: Текущее состояние клиентов (одна строка на клиента).
     columns:

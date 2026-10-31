@@ -1,4 +1,4 @@
-"""Ежедневный пересчёт витрин: проверка свежести источников, затем dbt build.
+"""Ежедневный пересчёт витрин: проверка свежести источников и загрузка курсов ЦБ, затем dbt build.
 
 Порядок важен: если CDC стоит, источник устарел, и пересчёт только перезаписал бы витрины теми же
 старыми данными, создав видимость обновления. Лучше упавший DAG, чем тихо устаревший дашборд.
@@ -36,6 +36,16 @@ with DAG(
         append_env=True,
         retries=0,  # повтор через 5 минут не сделает устаревшие данные свежими
     )
+    # dbt-venv: там уже есть clickhouse-connect, в окружение Airflow лишнее не ставим.
+    # ЦБ может быть недоступен: повторяем дольше, но при отказе витрины не собираем - иначе рубли
+    # молча считались бы по устаревшему курсу
+    rates = BashOperator(
+        task_id="load_cbr_rates",
+        bash_command="/opt/dbt-venv/bin/python /opt/airflow/include/cbr_rates.py",
+        append_env=True,
+        retries=3,
+        retry_delay=timedelta(minutes=10),
+    )
     build = BashOperator(task_id="dbt_build", bash_command=f"{DBT} build", env=DBT_ENV, append_env=True)
 
-    freshness >> build
+    [freshness, rates] >> build

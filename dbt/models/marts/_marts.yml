@@ -1,5 +1,30 @@
 models:
   # ---------- core ----------
+  - name: dim_exchange_rates
+    description: >
+      Курс доллара ЦБ РФ на каждый день истории заказов. В дни без публикации (воскресенье,
+      понедельник, праздники) действует последний опубликованный курс.
+    columns:
+      - name: date
+        data_tests: [not_null, unique]
+      - name: usd_rub_rate
+        description: Рублей за доллар. NULL означал бы, что курса раньше этой даты не загружено.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 30
+                max_value: 300
+      - name: rate_date
+        description: Дата публикации действующего курса.
+      - name: rate_age_days
+        description: Сколько дней назад опубликован действующий курс; большое значение значит, что загрузка отстала.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 7
+
   - name: fct_orders
     description: >
       Заказы за всю историю (одна строка на заказ), включая удалённые в источнике.
@@ -105,6 +130,17 @@ models:
               arguments:
                 min_value: 0
                 max_value: 1
+      - name: usd_rub_rate
+        description: Курс ЦБ на дату заказа (dim_exchange_rates).
+        data_tests: [not_null]
+      - name: gmv_rub
+        description: GMV в рублях по курсу на дату заказа.
+        data_tests: [not_null, non_negative]
+      - name: revenue_rub
+        description: Выручка в рублях по курсу на дату заказа.
+        data_tests: [not_null, non_negative]
+      - name: avg_order_value_rub
+        description: Средний чек в рублях; NULL в дни без оплаченных заказов.
       - name: is_complete_period
         description: День закончился (false для дня среза, то есть дня последнего заказа в данных).
       - name: is_full_week

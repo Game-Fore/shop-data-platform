@@ -60,6 +60,12 @@ select
     -- средний чек и доля отмен: NULL в дни без заказов (деление на 0 - не ноль, а "не определено")
     d.revenue / nullIf(d.paid_orders, 0) as avg_order_value,
     d.cancelled_orders / nullIf(d.orders, 0) as cancel_rate,
+    -- рубли по курсу ЦБ на дату заказа: фактическая выручка на момент продажи, колебания
+    -- курса после неё не переписывают прошлое
+    x.usd_rub_rate as usd_rub_rate,
+    round(coalesce(d.gmv, 0) * x.usd_rub_rate, 2) as gmv_rub,
+    round(coalesce(d.revenue, 0) * x.usd_rub_rate, 2) as revenue_rub,
+    round(d.revenue / nullIf(d.paid_orders, 0) * x.usd_rub_rate, 2) as avg_order_value_rub,
     -- день среза обычно неполный: история заканчивается посреди дня
     s.date < b.last_date as is_complete_period,
     -- неделя (пн-вс) целиком внутри данных: неполные недели на краях выглядели бы на недельных
@@ -68,4 +74,5 @@ select
 from spine as s
 cross join bounds as b
 left join daily as d on d.date = s.date
+left join {{ ref('dim_exchange_rates') }} as x on x.date = s.date
 left join new_buyers as n on n.date = s.date

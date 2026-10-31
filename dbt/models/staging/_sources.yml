@@ -32,3 +32,10 @@ sources:
         description: >
           Журнал всех CDC-событий по заказам (append-only, заполняется MV из shop.orders).
           Каждая версия заказа: переходы статусов, удаления. Ключ события - (order_id, _lsn).
+
+  - name: external
+    schema: external
+    description: Внешние данные. Таблицы создаёт и заполняет загрузчик airflow/include/cbr_rates.py.
+    tables:
+      - name: cbr_rates
+        description: Официальный курс ЦБ РФ; записи только за дни публикации.

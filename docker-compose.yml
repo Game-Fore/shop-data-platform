@@ -21,6 +21,7 @@ x-airflow-common: &airflow-common
     CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set in .env}
   volumes:
     - ./airflow/dags:/opt/airflow/dags:ro
+    - ./airflow/include:/opt/airflow/include:ro
     - ./dbt:/opt/dbt
 
 services:
@@ -175,6 +176,8 @@ services:
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set in .env}
     volumes:
       - ./dbt:/dbt
+      # загрузчик курсов: docker compose run --rm --entrypoint python dbt /include/cbr_rates.py
+      - ./airflow/include:/include:ro
     ports:
       - "8081:8081"  # dbt docs serve (нужен --service-ports)
 
