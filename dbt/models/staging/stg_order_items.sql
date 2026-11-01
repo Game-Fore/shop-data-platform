@@ -4,6 +4,7 @@ select
     product_id,
     quantity,
     price as unit_price,
-    price * quantity as line_total
+    price * quantity as line_total,
+    _ingested_at
 from {{ source('shop', 'order_items') }} final
 where _is_deleted = 0

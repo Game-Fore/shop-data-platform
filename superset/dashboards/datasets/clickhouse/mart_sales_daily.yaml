@@ -56,6 +56,26 @@ metrics:
   extra:
     warning_markdown: ''
   warning_text: null
+- metric_name: revenue_rub_sum
+  verbose_name: Выручка, ₽
+  metric_type: null
+  expression: sum(revenue_rub)
+  description: null
+  d3format: ',.0f'
+  currency: null
+  extra:
+    warning_markdown: ''
+  warning_text: null
+- metric_name: usd_rub_avg
+  verbose_name: Курс ЦБ, ₽ за $
+  metric_type: null
+  expression: avg(usd_rub_rate)
+  description: null
+  d3format: .2f
+  currency: null
+  extra:
+    warning_markdown: ''
+  warning_text: null
 columns:
 - column_name: date
   verbose_name: Дата
@@ -194,6 +214,54 @@ columns:
   is_dttm: false
   is_active: true
   type: Nullable(Float64)
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: usd_rub_rate
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: Nullable(Decimal(12, 4))
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: gmv_rub
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: Nullable(Decimal(38, 6))
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: revenue_rub
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: Nullable(Decimal(38, 6))
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+- column_name: avg_order_value_rub
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: Nullable(Decimal(38, 6))
   advanced_data_type: null
   groupby: true
   filterable: true

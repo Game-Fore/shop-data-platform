@@ -17,7 +17,8 @@ select
     i.line_total as line_total,
     o.order_date as order_date,
     o.status as status,
-    o.is_revenue as is_revenue
+    o.is_revenue as is_revenue,
+    i._ingested_at as _ingested_at
 from {{ ref('stg_order_items') }} as i
 left join {{ ref('fct_orders') }} as o on o.order_id = i.order_id
 left join {{ ref('stg_products') }} as p on p.product_id = i.product_id

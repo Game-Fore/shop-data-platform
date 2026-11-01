@@ -10,5 +10,6 @@ select
     updated_at as event_at,  -- бизнес-время события (в Postgres updated_at меняется на каждый UPDATE)
     _op as op,
     _is_deleted = 1 as is_delete,
-    _lsn as lsn
+    _lsn as lsn,
+    _ingested_at
 from {{ source('shop', 'orders_changelog') }} final

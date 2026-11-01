@@ -115,7 +115,7 @@ columns:
   verbose_name: null
   is_dttm: false
   is_active: true
-  type: UInt8
+  type: Nullable(UInt8)
   advanced_data_type: null
   groupby: true
   filterable: true

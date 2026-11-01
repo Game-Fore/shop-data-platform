@@ -75,6 +75,9 @@ models:
               arguments:
                 to: ref('fct_orders')
                 field: order_id
+              config:
+                # только что пришедшая позиция новее снимка fct_orders (см. макрос settling_order_ids)
+                where: "_ingested_at < now() - toIntervalMinute({{ var('settling_window_minutes') }})"
       - name: product_id
         data_tests:
           - relationships:

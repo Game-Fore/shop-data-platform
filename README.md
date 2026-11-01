@@ -6,9 +6,10 @@
 
 - **CDC**: PostgreSQL 16 → Debezium 3.0 (WAL, `pgoutput`) → Kafka 3.9 (KRaft) → Python-consumer (батчи, ручной commit offset'ов, ретраи) → ClickHouse 25.8 (`ReplacingMergeTree(_lsn, _is_deleted)`). Задержка p50 ≈ 1.5 с, доставка at-least-once с идемпотентным приёмником, проверена тестами отказов.
 - **Полная история изменений**: materialized view в ClickHouse сохраняет каждую версию заказа (переходы статусов, удаления), которую таблицы текущего состояния теряют после мержа.
-- **Хранилище в dbt** (`dbt-clickhouse`): raw → staging (views с `FINAL`) → marts (факты, измерения, продажи по дням, когортный retention, RFM, A/B), 86 моделей и тестов в `dbt build`, включая сверки между слоями, которые нашли реальные ошибки.
+- **Хранилище в dbt** (`dbt-clickhouse`): raw → staging (views с `FINAL`) → marts (факты, измерения, продажи по дням, когортный retention, RFM, A/B), 101 модель и тест в `dbt build`, включая сверки между слоями, которые нашли реальные ошибки.
 - **Реалистичная история**: воспроизводимый backfill за 180 дней (~16 тыс. заказов) на основе затухающего пуассоновского процесса покупок с Gamma-распределённой активностью клиентов, поэтому когорты и RFM-сегменты осмысленны.
 - **Аналитика в Jupyter**: продажи, воронка с учётом цензурирования, когорты и LTV, RFM с бэктестом, A/B-тест скидки: дизайн, MDE, SRM, A/A, z-тест, Уэлч, бутстреп, CUPED, delta-метод и решение с учётом прибыли.
+- **Оркестрация в Airflow**: ежедневная проверка свежести источников, загрузка курсов ЦБ РФ и пересборка витрин; при остановке CDC запуск падает, а не публикует устаревшие данные.
 - **BI как код**: дашборд в Superset хранится в git как YAML и поднимается автоматически; доступ к ClickHouse только на чтение витрин.
 
 Проект вырос из [cdc-pg-clickhouse](https://github.com/Game-Fore/cdc-pg-clickhouse) и развивается по этапам:
@@ -19,7 +20,7 @@
 | 1 | Хранилище в dbt: raw → staging → marts, тесты, документация | ✅ |
 | 2 | Аналитика в Jupyter: GMV, воронка, когорты, RFM, A/B-тест | ✅ |
 | 3 | BI-дашборд в Superset | ✅ |
-| 4 | Оркестрация в Airflow, курсы ЦБ РФ, витрины в рублях | ⏳ |
+| 4 | Оркестрация в Airflow, курсы ЦБ РФ, витрины в рублях | ✅ |
 | 5 | Надёжность: метрики consumer'а в Prometheus, алерты, DLQ | ⏳ |
 | 6 | Качество: pytest, ruff, GitHub Actions | ⏳ |
 
@@ -49,6 +50,9 @@ flowchart LR
     DBT[dbt build<br/>docker compose run] -.->|создаёт| STG
     DBT -.->|создаёт| MARTS
     MARTS -->|только чтение| BI[Superset 6.1<br/>бизнес-дашборд]
+    CBR[API ЦБ РФ<br/>курс USD] --> AF[Airflow 3<br/>shop_daily]
+    AF -->|external.cbr_rates| STG
+    AF -.->|03:00 МСК: свежесть, dbt build| MARTS
     RAW --> GR[Grafana<br/>задержка CDC]
     K -.-> UI[kafka-ui]
 ```
@@ -62,6 +66,7 @@ flowchart LR
 | ClickHouse 25.8 | Хранилище: raw, staging, marts | 8123, 9000 |
 | dbt 1.11 + dbt-clickhouse | Трансформации и тесты данных (профиль `tools`) | 8081 (docs) |
 | Superset 6.1 | Бизнес-дашборд поверх витрин (профиль `bi`) | 8088 |
+| Airflow 3.3 | Ежедневный пайплайн `shop_daily`, LocalExecutor (профиль `orch`) | 8082 |
 | Grafana 12 | Технический дашборд CDC | 3000 |
 | kafka-ui | Просмотр топиков и коннекторов | 8080 |
 
@@ -95,6 +100,7 @@ flowchart LR
 ├── analytics/                  # общий код: db.py, stats.py, rfm.py, plots.py
 ├── notebooks/                  # 01 продажи, 02 воронка, 03 когорты, 04 RFM, 05 A/B-тест
 ├── superset/                   # образ, настройки, запуск; dashboards/ - дашборд как YAML
+├── airflow/                    # образ с dbt, dags/shop_daily.py, include/cbr_rates.py
 ├── dbt/
 │   ├── Dockerfile, profiles.yml, dbt_project.yml, packages.yml
 │   ├── macros/                 # schema name, дата среза, условие выручки
@@ -136,6 +142,7 @@ python verify.py
 # 6. Хранилище: собрать модели и прогнать тесты
 docker compose --profile tools build dbt
 docker compose run --rm dbt deps
+docker compose run --rm --entrypoint python dbt /include/cbr_rates.py  # курсы ЦБ: без них витрины не соберутся
 docker compose run --rm dbt build
 
 # 7. Документация dbt и граф lineage: http://localhost:8081
@@ -148,14 +155,17 @@ jupyter lab notebooks
 
 # 9. BI: http://localhost:8088, логин admin, пароль SUPERSET_ADMIN_PASSWORD из .env
 docker compose --profile bi up -d --wait superset
+
+# 10. Оркестрация: http://localhost:8082, вход без пароля
+docker compose --profile orch up -d --wait airflow-api-server
 ```
 
-Весь путь от `reset.ps1` до готового дашборда на чистом стенде занимает около 2.5 минут. Superset поднимайте после `dbt build`: чарты читают витрины.
+Весь путь от `reset.ps1` до работающих дашборда и Airflow на чистом стенде занимает чуть больше 3 минут (без сборки образов). Superset и Airflow поднимайте после `dbt build` и backfill: чарты читают витрины, а Airflow сразу запускает DAG за последний интервал, и на пустом стенде этот запуск будет красным. Весь стек занимает около 3.7 ГБ памяти.
 
 На Linux/macOS: `cp .env.example .env`, затем вместо `reset.ps1` выполните `docker compose up -d --wait` и зарегистрируйте коннектор:
 `curl -X POST -H "Content-Type: application/json" --data @connectors/postgres-shop.json localhost:8083/connectors`.
 
-Пауза и продолжение без потери данных: `docker compose --profile bi stop` / `docker compose --profile bi start`. Команда `docker compose down` удаляет контейнеры вместе с данными (у сервисов нет volume), после неё нужен `reset.ps1`.
+Пауза и продолжение без потери данных: `docker compose --profile bi --profile orch stop` / `docker compose --profile bi --profile orch start`. Команда `docker compose down` удаляет контейнеры вместе с данными (у сервисов нет volume), после неё нужен `reset.ps1`.
 
 | UI | Адрес |
 |---|---|
@@ -164,6 +174,7 @@ docker compose --profile bi up -d --wait superset
 | Debezium REST | http://localhost:8083/connectors/shop-connector/status |
 | dbt docs | http://localhost:8081 (после `dbt docs serve`) |
 | Superset | http://localhost:8088/superset/dashboard/sales-and-customers/ |
+| Airflow | http://localhost:8082 |
 
 ## Как это устроено
 
@@ -261,7 +272,7 @@ dbt запускается в контейнере (`docker compose run --rm dbt
 | raw | `shop` | source (таблицами владеет CDC) | таблицы consumer'а и журнал; проверка свежести по `_ingested_at` |
 | staging | `staging` | view | `FROM ... FINAL WHERE _is_deleted = 0`, переименование, бизнес-дата |
 | intermediate | — | ephemeral (CTE) | `int_order_status_events`: только смены статуса из журнала |
-| marts | `marts` | table, `ORDER BY` под типичный фильтр | `fct_orders`, `fct_order_items`, `dim_customers`, `dim_products`, `mart_sales_daily`, `mart_cohort_retention`, `mart_customer_rfm`, `mart_ab_users`, `mart_order_funnel` |
+| marts | `marts` | table, `ORDER BY` под типичный фильтр | `fct_orders`, `fct_order_items`, `dim_customers`, `dim_products`, `mart_sales_daily`, `mart_cohort_retention`, `mart_customer_rfm`, `mart_ab_users`, `mart_order_funnel`, `dim_exchange_rates` |
 | seeds | `marts` | seed из CSV в git | `experiments`: реестр экспериментов, основная метрика фиксируется до анализа |
 
 **Почему marts — таблицы с полной пересборкой, а не incremental.** Метрики последних дней «дозревают»: вчерашний заказ сегодня оплачивается или отменяется (в данных это видно: доля отмен у заказов последней недели ~11%, у заказов старше месяца ~15%). Инкрементальной модели пришлось бы пересчитывать окно в несколько дней и отдельно обрабатывать удаления. На ~16.4k заказов полная сборка всего проекта с тестами занимает около 2.5 с.
@@ -280,7 +291,7 @@ dbt запускается в контейнере (`docker compose run --rm dbt
 | Когорта | месяц первой *покупки* (не регистрации и не первого заказа) |
 | Retention месяца N | доля когорты с покупкой в месяце N; месяцы после даты среза отсутствуют, а не равны 0 |
 
-**Тесты** (86 узлов в `dbt build`: модели, seed и тесты): `unique`, `not_null`, `relationships`, `accepted_values`; из `dbt_utils` — `expression_is_true` (статусы идут по порядку), `accepted_range`, `unique_combination_of_columns`; свой generic-тест `non_negative`; singular-сверки:
+**Тесты** (101 узел в `dbt build`: модели, seed и тесты): `unique`, `not_null`, `relationships`, `accepted_values`; из `dbt_utils` — `expression_is_true` (статусы идут по порядку), `accepted_range`, `unique_combination_of_columns`; свой generic-тест `non_negative`; singular-сверки:
 
 | Тест | Что проверяет |
 |---|---|
@@ -291,6 +302,7 @@ dbt запускается в контейнере (`docker compose run --rm dbt
 | `assert_cohort_month0_is_full` | в месяц когорты активны все её клиенты |
 | `assert_rfm_covers_all_buyers` | каждый покупатель попал в RFM-витрину ровно один раз |
 | `assert_funnel_is_monotonic` | воронка не расширяется, первый этап равен числу заказов |
+| `assert_sales_rub_reconciles` | рублёвая выручка по дням сходится с пересчётом каждого заказа по курсу на его дату |
 | `assert_experiment_no_srm` | размеры групп эксперимента соответствуют плану 50/50 (χ², p < 0.001) |
 
 **Особенности ClickHouse, найденные по ходу:**
@@ -319,6 +331,22 @@ dbt запускается в контейнере (`docker compose run --rm dbt
 | Столбцы вместо viz «воронка» | он рисует последний этап треугольником, даже если потерь на нём нет |
 | Удержание только по завершённым месяцам | на дашборде нет места для пометки, а незавершённый месяц выглядит как падение |
 | Сборка русского перевода в `Dockerfile` | в официальном образе только исходники перевода, без компиляции интерфейс остаётся английским |
+
+### Оркестрация: Airflow
+
+DAG `shop_daily` запускается в 03:00 по Москве: `[source_freshness, load_cbr_rates] → dbt_build`. Сервисы в профиле `orch`: api-server, scheduler (с LocalExecutor) и dag-processor; метаданные в отдельной базе существующего Postgres, которую Debezium не читает.
+
+| Решение | Почему |
+|---|---|
+| Свежесть источников до сборки, без повторов | если CDC стоит, пересборка создала бы видимость обновления на старых данных; упавший DAG лучше тихо устаревшего дашборда |
+| dbt в отдельном venv внутри образа, пакеты зашиты при сборке | зависимости dbt и Airflow конфликтуют; ночной запуск не зависит от dbt Hub и не трогает смонтированный каталог проекта. Альтернатива `DockerOperator` требует доступа к Docker-сокету |
+| `catchup=False` | витрины пересобираются целиком, догонять пропущенные дни незачем |
+| Курс загружается целым диапазоном при каждом запуске | один небольшой запрос, не нужно хранить «где остановились», подхватываются исправления задним числом; `ReplacingMergeTree` делает это идемпотентным |
+| Рубли по курсу ЦБ на дату заказа | фактическая выручка на момент продажи, колебания курса не переписывают прошлое; доллары в витрине остаются, потому что рублёвая динамика смешивает рост продаж и движение курса |
+| `ASOF JOIN` в `dim_exchange_rates` | ЦБ не публикует курс на воскресенье, понедельник и праздники; действует последний опубликованный. Тест: возраст курса не больше 7 дней |
+| При отказе ЦБ витрины не собираются | лучше видимый сбой, чем рубли по молча устаревшему курсу. Цена: день простоя ЦБ останавливает и долларовые витрины |
+
+**dbt на живом потоке.** Модели собираются по очереди, поэтому staging, прочитанный секундами позже `fct_orders`, уже новее его снимка: под нагрузкой 30 действий/с один `dbt build` из четырёх падал на сверках, хотя данные верны. Такие сверки теперь пропускают заказы с событиями за последние 5 минут (`settling_window_minutes`), причём окно считается по времени прихода в ClickHouse (`_ingested_at`), а не по бизнес-времени: старый заказ может сменить статус прямо сейчас. После правки шесть сборок из шести прошли под той же нагрузкой, а подставленные ошибки со старым временем прихода (позиция без заказа, заказ только в журнале) тесты по-прежнему ловят.
 
 ## Аналитика
 
@@ -415,7 +443,8 @@ RESULT: CONSISTENT
 - **Replication slot удерживает WAL**, пока коннектор не подтвердит чтение. Если Debezium долго лежит, WAL растёт и может заполнить диск Postgres. Нужен алерт на `pg_replication_slots` и/или `max_slot_wal_keep_size`.
 - **Повторы есть на двух уровнях**: Debezium после жёсткого падения переотправляет события с последнего сброса offset'ов (раз в 60 с), consumer — последний незакоммиченный батч. Корректность держится на идемпотентности приёмника, поэтому запросы к текущему состоянию должны использовать `FINAL` (или `argMax` по `_lsn`).
 - **Ребаланс не обрабатывается явно**: строки, прочитанные до отзыва партиций, вставляются, но их offset'ы могут не закоммититься и будут прочитаны повторно. Безопасно благодаря идемпотентности; правильное решение — flush и commit в `on_revoke` (этап 5).
-- **dbt на живом потоке**: `orders` и `order_items` приходят разными `INSERT`, поэтому тест `relationships` для позиций может кратко упасть, если запустить `dbt build` во время генерации. Сейчас dbt запускается при остановленном генераторе; окно допуска появится вместе с расписанием в Airflow.
+- **dbt на живом потоке**: заказы с событиями за последние 5 минут сверки пропускают, а в витрине `fct_order_items` до следующей сборки могут быть позиции без атрибутов заказа. На следующей пересборке это исправляется.
+- **Airflow**: вход без пароля (порт открыт только на `127.0.0.1`), нет алертов о сбое DAG (этап 5). При остановленном генераторе `source_freshness` упадёт через 24 часа после последних данных: для демо нужен свежий backfill или живая нагрузка. Сборка витрин зависит от доступности `cbr.ru`, что учесть в CI (этап 6).
 - **Живая нагрузка после backfill** пишет настоящее время, а история заканчивается на `--end-at`. Между ними будет разрыв с нулевыми продажами, а дата среза сдвинется на последний живой заказ. Для стенда с непрерывным потоком задайте `--end-at` равным текущему моменту, но тогда числа будут отличаться от README.
 - **Эволюция схемы** не автоматизирована: новую колонку в Postgres нужно вручную добавить в ClickHouse и в маппинг consumer'а. Новая таблица требует правок в четырёх местах: Postgres, `table.include.list` коннектора, маппинг consumer'а, ClickHouse.
 - **Нет себестоимости**: прибыль в A/B-тесте оценена при предполагаемой марже, а не измерена.
@@ -425,6 +454,5 @@ RESULT: CONSISTENT
 
 ## Дальше
 
-- Airflow: ежедневный `dbt build`, проверки качества, курсы валют ЦБ РФ и витрины в рублях.
 - Prometheus: метрики consumer'а (лаг, размер батча, ошибки), алерты, DLQ-топик.
 - CI: pytest для consumer'а и генератора, ruff, `dbt build` на стенде в GitHub Actions.
