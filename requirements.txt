@@ -3,3 +3,4 @@ faker
 confluent-kafka
 clickhouse-connect
 python-dotenv
+prometheus-client

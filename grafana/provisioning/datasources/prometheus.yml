@@ -1,0 +1,10 @@
+apiVersion: 1
+datasources:
+  # сервис prometheus в профиле obs: без него работает только дашборд метрик consumer'а
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    jsonData:
+      timeInterval: 5s

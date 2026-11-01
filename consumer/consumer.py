@@ -12,6 +12,8 @@ from decimal import Decimal
 from confluent_kafka import Consumer, KafkaError, KafkaException
 from dotenv import load_dotenv
 
+import metrics
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("consumer")
 
@@ -87,6 +89,7 @@ def to_row(value: dict, fields: dict) -> list:
 
 
 def flush(ch, buffers: dict) -> int:
+    started = time.monotonic()
     total = 0
     for topic, rows in buffers.items():
         if not rows:
@@ -99,14 +102,27 @@ def flush(ch, buffers: dict) -> int:
                 ch.insert(table, rows, column_names=columns)
                 break
             except Exception as e:
+                metrics.INSERT_ERRORS.labels(table).inc()
                 log.warning("insert into %s failed (attempt %d/%d): %s", table, attempt, MAX_RETRIES, e)
                 time.sleep(2 ** attempt)
         else:
             raise RuntimeError(f"giving up on insert into {table}")
 
+        metrics.ROWS_INSERTED.labels(table).inc(len(rows))
         total += len(rows)
         rows.clear()
+    metrics.BATCH_ROWS.observe(total)
+    metrics.FLUSH_SECONDS.observe(time.monotonic() - started)
+    metrics.LAST_FLUSH.set_to_current_time()
     return total
+
+
+def observe_lag(source_ts_ms: list[int]):
+    """Сквозная задержка записанных строк: от коммита в Postgres до этого момента."""
+    now = time.time()
+    for ts in source_ts_ms:
+        metrics.E2E_LAG_SECONDS.observe(now - ts / 1000)
+    source_ts_ms.clear()
 
 
 def commit(consumer):
@@ -126,6 +142,7 @@ def main():
                         help="упасть после N-го flush, до коммита offset'ов (тест отказа)")
     args = parser.parse_args()
     log.info("pid=%d", os.getpid())
+    metrics.start_metrics_server()
     flushes = 0
     consumer = Consumer(KAFKA_CONF)
     consumer.subscribe(list(TABLES))
@@ -133,6 +150,7 @@ def main():
 
     buffers = {topic: [] for topic in TABLES}
     pending = 0
+    pending_ts = []
     last_flush = time.monotonic()
 
     running = True
@@ -149,6 +167,7 @@ def main():
             if msg is not None:
                 if msg.error():
                     if msg.error().code() != KafkaError._PARTITION_EOF:
+                        metrics.KAFKA_ERRORS.inc()
                         log.error("kafka error: %s", msg.error())
                 elif msg.value() is not None:  # tombstone пропускаем
                     try:
@@ -156,11 +175,15 @@ def main():
                         _, fields = TABLES[msg.topic()]
                         buffers[msg.topic()].append(to_row(value, fields))
                         pending += 1
+                        pending_ts.append(value["__source_ts_ms"])
+                        metrics.MESSAGES.labels(msg.topic(), "ok").inc()
                     except Exception as e:
+                        metrics.MESSAGES.labels(msg.topic(), "bad").inc()
                         log.error("bad message %s[%d]@%d: %s", msg.topic(), msg.partition(), msg.offset(), e)
 
             if pending >= BATCH_SIZE or (pending and time.monotonic() - last_flush >= FLUSH_INTERVAL_SEC):
                 n = flush(ch, buffers)
+                observe_lag(pending_ts)
                 flushes += 1
                 if args.crash_after_flush and flushes >= args.crash_after_flush:
                     log.warning("simulating crash after flush #%d: data inserted, offsets NOT committed", flushes)

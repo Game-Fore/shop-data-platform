@@ -300,3 +300,36 @@ services:
       airflow-init:
         condition: service_completed_successfully
     command: dag-processor
+
+  # --- Мониторинг (профиль obs): docker compose --profile obs up -d --wait prometheus ---
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.10.0
+    container_name: kafka-exporter
+    profiles: ["obs"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command: ["--kafka.server=kafka:9092"]
+    restart: on-failure  # Kafka может быть ещё не готов принимать метаданные в первые секунды
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    container_name: prometheus
+    profiles: ["obs"]
+    depends_on:
+      - kafka-exporter
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    # consumer на хосте; на Docker Desktop этот адрес есть и так, на Linux его нужно задать
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
