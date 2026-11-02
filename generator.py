@@ -1,20 +1,17 @@
 import argparse
-import os
 import logging
+import os
 import random
 import time
-import psycopg
-
-
-
-from backfill import DEFAULT_END_AT, parse_end_at, run_backfill
 from collections import Counter
 from decimal import Decimal
+
+import psycopg
 from dotenv import load_dotenv
 from faker import Faker
 from psycopg.conninfo import make_conninfo
 
-
+from backfill import DEFAULT_END_AT, parse_end_at, run_backfill
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("generator")
@@ -130,7 +127,7 @@ def main():
                              f"по умолчанию {DEFAULT_END_AT.isoformat()}")
     args = parser.parse_args()
 
-    funcs, weights = zip(*ACTIONS)
+    funcs, weights = zip(*ACTIONS, strict=True)
 
     with psycopg.connect(args.dsn, autocommit=True) as conn:
         if args.backfill_days:

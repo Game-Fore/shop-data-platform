@@ -31,7 +31,7 @@ import math
 import random
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from faker import Faker
@@ -47,7 +47,7 @@ REPEAT_DECAY_DAYS = 60.0          # характерное время затух
 PRICE_CHANGE_EVERY_DAYS = 14.0    # в среднем раз в две недели на товар
 BATCH_SIZE = 500                  # событий на транзакцию
 # конец истории по умолчанию: начало истории и окно эксперимента считаются от него
-DEFAULT_END_AT = datetime(2026, 10, 29, 12, 0, tzinfo=timezone.utc)
+DEFAULT_END_AT = datetime(2026, 10, 29, 12, 0, tzinfo=UTC)
 
 # A/B-эксперимент. Длительность должна совпадать с dbt/seeds/experiments.csv.
 EXPERIMENT_ID = "discount_10"
@@ -92,8 +92,8 @@ def parse_end_at(value: str) -> datetime:
     """ISO-дата или дата со временем; без таймзоны считается UTC."""
     parsed = datetime.fromisoformat(value)
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def poisson(lam: float) -> int:

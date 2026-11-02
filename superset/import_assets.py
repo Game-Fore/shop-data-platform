@@ -22,12 +22,13 @@ PLACEHOLDER = "__CLICKHOUSE_BI_PASSWORD__"
 app = create_app()
 with app.app_context():
     # импортировать можно только после создания приложения: модели используют его контекст
-    from superset import security_manager
     from superset.commands.chart.importers.v1 import ImportChartsCommand
     from superset.commands.dashboard.importers.v1 import ImportDashboardsCommand
     from superset.commands.database.importers.v1 import ImportDatabasesCommand
     from superset.commands.dataset.importers.v1 import ImportDatasetsCommand
     from superset.utils.core import override_user
+
+    from superset import security_manager
 
     password = quote(os.environ["CLICKHOUSE_BI_PASSWORD"], safe="")
     contents = {path.relative_to(SOURCE).as_posix(): path.read_text(encoding="utf-8").replace(PLACEHOLDER, password)

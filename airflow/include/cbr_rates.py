@@ -78,7 +78,8 @@ def main():
     if not rows:  # пустой ответ - сбой источника: нельзя молча считать, что всё загружено
         raise RuntimeError(f"ЦБ не вернул курс за {start} - {end}")
     client.insert("external.cbr_rates", rows, column_names=["rate_date", "currency_code", "nominal", "rub_per_unit"])
-    log.info("загружено %d курсов %s: %s - %s, последний %s", len(rows), CURRENCY_CODE, rows[0][0], rows[-1][0], rows[-1][3])
+    log.info("загружено %d курсов %s: %s - %s, последний %s",
+             len(rows), CURRENCY_CODE, rows[0][0], rows[-1][0], rows[-1][3])
 
 
 if __name__ == "__main__":

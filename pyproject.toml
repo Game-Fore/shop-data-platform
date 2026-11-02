@@ -1,0 +1,15 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# скрипты не оформлены пакетом: consumer.py импортирует metrics как соседний файл
+pythonpath = ["consumer", ".", "airflow/include"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+# ноутбуки сохраняются с выводом и проверяются выполнением; dbt_packages - чужой код
+extend-exclude = ["notebooks", "dbt/dbt_packages"]
+
+[tool.ruff.lint]
+# E, F - ошибки; I - порядок импортов; B - частые баги; UP - устаревший синтаксис
+select = ["E", "F", "I", "B", "UP"]

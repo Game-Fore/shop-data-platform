@@ -3,13 +3,12 @@ import argparse
 import os
 import sys
 import time
+from decimal import Decimal
+
 import clickhouse_connect
 import psycopg
-
-from decimal import Decimal
 from dotenv import load_dotenv
 from psycopg.conninfo import make_conninfo
-
 
 load_dotenv()
 PG_DSN = make_conninfo(

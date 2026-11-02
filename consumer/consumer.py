@@ -1,18 +1,16 @@
+import argparse
 import json
 import logging
+import os
 import signal
 import time
-import clickhouse_connect
-import argparse
-import os
-
-
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
+
+import clickhouse_connect
+import metrics
 from confluent_kafka import Consumer, KafkaError, KafkaException, Producer
 from dotenv import load_dotenv
-
-import metrics
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("consumer")
@@ -65,7 +63,7 @@ def ts(v):
     return datetime.fromisoformat(text(v))
 
 def ts_ms(v):
-    return datetime.fromtimestamp(v / 1000, tz=timezone.utc)
+    return datetime.fromtimestamp(v / 1000, tz=UTC)
 
 
 # топик -> (таблица в ClickHouse, {колонка: конвертер})
@@ -251,7 +249,8 @@ def main():
                     except Exception as e:
                         metrics.MESSAGES.labels(msg.topic(), "bad").inc()
                         metrics.DLQ_MESSAGES.labels(msg.topic()).inc()
-                        log.error("bad message %s[%d]@%d -> %s: %s", msg.topic(), msg.partition(), msg.offset(), DLQ_TOPIC, e)
+                        log.error("bad message %s[%d]@%d -> %s: %s",
+                                  msg.topic(), msg.partition(), msg.offset(), DLQ_TOPIC, e)
                         dlq.send(msg, e)
                     else:
                         buffers[msg.topic()].append(row)
