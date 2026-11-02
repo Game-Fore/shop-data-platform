@@ -9,7 +9,7 @@ import os
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from confluent_kafka import Consumer, KafkaError, KafkaException
+from confluent_kafka import Consumer, KafkaError, KafkaException, Producer
 from dotenv import load_dotenv
 
 import metrics
@@ -35,21 +35,34 @@ CH_CONF = dict(
     database="shop",
 )
 
+DLQ_TOPIC = "shop.dlq"
 BATCH_SIZE = 1000
 FLUSH_INTERVAL_SEC = 1.0
 MAX_RETRIES = 5
 
 
 # --- конвертеры полей Debezium -> Python-типы для clickhouse-connect ---
-def raw(v):
+# Строгие: значение неверного типа должно упасть здесь и уйти в DLQ. Если пропустить его до вставки,
+# упадёт весь батч, а после перезапуска consumer прочитает то же сообщение: бесконечный цикл падений.
+def integer(v):
+    if isinstance(v, bool) or not isinstance(v, int):
+        raise ValueError(f"expected integer, got {v!r}")
     return v
 
+def text(v):
+    if not isinstance(v, str):
+        raise ValueError(f"expected string, got {v!r}")
+    return v
+
+def optional_text(v):
+    return None if v is None else text(v)
+
 def dec(v):
-    return Decimal(v) if v is not None else None
+    return Decimal(text(v))
 
 def ts(v):
     # Debezium отдаёт timestamptz как ISO-строку: 2026-10-05T08:33:39.947123Z
-    return datetime.fromisoformat(v) if v else None
+    return datetime.fromisoformat(text(v))
 
 def ts_ms(v):
     return datetime.fromtimestamp(v / 1000, tz=timezone.utc)
@@ -58,20 +71,20 @@ def ts_ms(v):
 # топик -> (таблица в ClickHouse, {колонка: конвертер})
 TABLES = {
     "shop.public.customers": ("customers", {
-        "id": raw, "email": raw, "full_name": raw, "city": raw, "created_at": ts,
+        "id": integer, "email": text, "full_name": text, "city": optional_text, "created_at": ts,
     }),
     "shop.public.products": ("products", {
-        "id": raw, "name": raw, "category": raw, "price": dec,
+        "id": integer, "name": text, "category": text, "price": dec,
     }),
     "shop.public.orders": ("orders", {
-        "id": raw, "customer_id": raw, "status": raw, "total": dec,
+        "id": integer, "customer_id": integer, "status": text, "total": dec,
         "created_at": ts, "updated_at": ts,
     }),
     "shop.public.order_items": ("order_items", {
-        "id": raw, "order_id": raw, "product_id": raw, "quantity": raw, "price": dec,
+        "id": integer, "order_id": integer, "product_id": integer, "quantity": integer, "price": dec,
     }),
     "shop.public.experiment_assignments": ("experiment_assignments", {
-        "experiment_id": raw, "customer_id": raw, "variant": raw, "assigned_at": ts,
+        "experiment_id": text, "customer_id": integer, "variant": text, "assigned_at": ts,
     }),
 }
 META_COLUMNS = ["_op", "_lsn", "_source_ts", "_is_deleted"]
@@ -111,9 +124,10 @@ def flush(ch, buffers: dict) -> int:
         metrics.ROWS_INSERTED.labels(table).inc(len(rows))
         total += len(rows)
         rows.clear()
-    metrics.BATCH_ROWS.observe(total)
-    metrics.FLUSH_SECONDS.observe(time.monotonic() - started)
-    metrics.LAST_FLUSH.set_to_current_time()
+    if total:  # батч из одних битых сообщений строк не записывает
+        metrics.BATCH_ROWS.observe(total)
+        metrics.FLUSH_SECONDS.observe(time.monotonic() - started)
+        metrics.LAST_FLUSH.set_to_current_time()
     return total
 
 
@@ -136,6 +150,38 @@ def commit(consumer):
         log.info("nothing to commit (no offsets stored after rebalance)")
 
 
+class DeadLetterQueue:
+    """Битые сообщения: исходные байты без изменений, причина и источник - в заголовках.
+
+    Сообщение считается обработанным только после подтверждения от Kafka: flush() вызывается
+    до коммита offset'а, иначе при сбое сообщение пропало бы и из топика-источника, и из DLQ.
+    """
+
+    def __init__(self, conf: dict):
+        self.producer = Producer({"bootstrap.servers": conf["bootstrap.servers"], "acks": "all"})
+        self.errors = []
+
+    def send(self, msg, error: Exception):
+        self.producer.produce(
+            DLQ_TOPIC,
+            key=msg.key(),
+            value=msg.value(),
+            headers={
+                "dlq.source.topic": msg.topic(),
+                "dlq.source.partition": str(msg.partition()),
+                "dlq.source.offset": str(msg.offset()),
+                "dlq.error": f"{type(error).__name__}: {error}"[:500],
+            },
+            on_delivery=lambda err, _: err and self.errors.append(err),
+        )
+        self.producer.poll(0)
+
+    def flush(self):
+        undelivered = self.producer.flush(10)
+        if undelivered or self.errors:
+            raise RuntimeError(f"DLQ undelivered: {undelivered}, errors: {self.errors[:3]}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--crash-after-flush", type=int, default=0,
@@ -143,15 +189,43 @@ def main():
     args = parser.parse_args()
     log.info("pid=%d", os.getpid())
     metrics.start_metrics_server()
+    for topic, (table, _) in TABLES.items():
+        # создать серии с нулём заранее: increase() в алертах не видит первого роста с "нет метрики" до 1
+        metrics.INSERT_ERRORS.labels(table)
+        metrics.DLQ_MESSAGES.labels(topic)
     flushes = 0
     consumer = Consumer(KAFKA_CONF)
-    consumer.subscribe(list(TABLES))
+    dlq = DeadLetterQueue(KAFKA_CONF)
     ch = clickhouse_connect.get_client(**CH_CONF)
 
     buffers = {topic: [] for topic in TABLES}
-    pending = 0
+    pending = 0      # прочитанные, но ещё не записанные сообщения (включая ушедшие в DLQ)
     pending_ts = []
     last_flush = time.monotonic()
+
+    def flush_all() -> int:
+        nonlocal pending, last_flush
+        n = flush(ch, buffers)
+        dlq.flush()
+        observe_lag(pending_ts)
+        pending = 0
+        last_flush = time.monotonic()
+        return n
+
+    def on_revoke(c, partitions):
+        # Партиции уходят другому consumer'у: дописать буфер и зафиксировать offset'ы сейчас,
+        # иначе новый владелец прочитает эти сообщения повторно.
+        if not pending:
+            return
+        n = flush_all()
+        try:
+            commit(c)
+        except KafkaException as e:
+            # группа уже пересобрана: дубли безопасны, ReplacingMergeTree схлопнет их по _lsn
+            log.warning("commit on revoke failed: %s", e)
+        log.info("rebalance: flushed %d rows before revoke", n)
+
+    consumer.subscribe(list(TABLES), on_revoke=on_revoke)
 
     running = True
     def stop(*_):
@@ -173,28 +247,29 @@ def main():
                     try:
                         value = json.loads(msg.value())
                         _, fields = TABLES[msg.topic()]
-                        buffers[msg.topic()].append(to_row(value, fields))
-                        pending += 1
-                        pending_ts.append(value["__source_ts_ms"])
-                        metrics.MESSAGES.labels(msg.topic(), "ok").inc()
+                        row = to_row(value, fields)
                     except Exception as e:
                         metrics.MESSAGES.labels(msg.topic(), "bad").inc()
-                        log.error("bad message %s[%d]@%d: %s", msg.topic(), msg.partition(), msg.offset(), e)
+                        metrics.DLQ_MESSAGES.labels(msg.topic()).inc()
+                        log.error("bad message %s[%d]@%d -> %s: %s", msg.topic(), msg.partition(), msg.offset(), DLQ_TOPIC, e)
+                        dlq.send(msg, e)
+                    else:
+                        buffers[msg.topic()].append(row)
+                        pending_ts.append(value["__source_ts_ms"])
+                        metrics.MESSAGES.labels(msg.topic(), "ok").inc()
+                    pending += 1
 
             if pending >= BATCH_SIZE or (pending and time.monotonic() - last_flush >= FLUSH_INTERVAL_SEC):
-                n = flush(ch, buffers)
-                observe_lag(pending_ts)
+                n = flush_all()
                 flushes += 1
                 if args.crash_after_flush and flushes >= args.crash_after_flush:
                     log.warning("simulating crash after flush #%d: data inserted, offsets NOT committed", flushes)
                     os._exit(1)  # мгновенный выход без finally и без commit
                 commit(consumer)
                 log.info("flushed %d rows", n)
-                pending = 0
-                last_flush = time.monotonic()
     finally:
         if pending:
-            flush(ch, buffers)
+            flush_all()
             commit(consumer)
         consumer.close()
         log.info("stopped")

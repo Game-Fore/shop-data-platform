@@ -591,6 +591,34 @@
           "mode": "multi"
         }
       }
+    },
+    {
+      "id": 11,
+      "title": "Алерты",
+      "type": "alertlist",
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 24,
+        "h": 8
+      },
+      "options": {
+        "viewMode": "list",
+        "groupMode": "default",
+        "groupBy": [],
+        "maxItems": 20,
+        "sortOrder": 1,
+        "dashboardAlerts": false,
+        "alertName": "",
+        "alertInstanceLabelFilter": "",
+        "stateFilter": {
+          "firing": true,
+          "pending": true,
+          "noData": true,
+          "error": true,
+          "normal": true
+        }
+      }
     }
   ],
   "editable": true

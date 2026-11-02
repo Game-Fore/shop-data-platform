@@ -1,0 +1,146 @@
+# Алерты как код. Получателя уведомлений на локальном стенде нет: состояние видно в
+# Alerting -> Alert rules и на дашборде "CDC: метрики consumer'а". В продакшене сюда добавился бы
+# contact point (Telegram, почта, PagerDuty).
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: cdc-pipeline
+    folder: CDC
+    interval: 30s
+    rules:
+      - uid: cdc-consumer-down
+        title: Consumer не отвечает
+        condition: C
+        for: 1m
+        noDataState: Alerting  # нет даже up: Prometheus не видит цель
+        execErrState: Error
+        annotations:
+          summary: Consumer не отдаёт метрики больше минуты. Данные не доставляются в ClickHouse.
+          runbook: Проверить процесс consumer.py и его лог; после перезапуска он продолжит с закоммиченных offset'ов.
+        labels: {severity: critical}
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 300, to: 0}
+            model: {refId: A, instant: true, expr: 'up{job="consumer"}'}
+          - refId: C
+            datasourceUid: __expr__
+            relativeTimeRange: {from: 0, to: 0}
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+
+      - uid: cdc-lag-high
+        title: Consumer отстаёт
+        condition: C
+        for: 3m  # backfill даёт кратковременный всплеск лага, это не сбой
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: Лаг consumer group больше 1000 сообщений уже 3 минуты.
+          runbook: Consumer лежит или не успевает. Смотреть панели задержки и длительности сброса.
+        labels: {severity: warning}
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 300, to: 0}
+            model: {refId: A, instant: true, expr: 'sum(kafka_consumergroup_lag{consumergroup="cdc-clickhouse"})'}
+          - refId: C
+            datasourceUid: __expr__
+            relativeTimeRange: {from: 0, to: 0}
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [1000]}
+
+      - uid: cdc-insert-errors
+        title: Ошибки вставки в ClickHouse
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: Вставка в ClickHouse завершалась ошибкой в последние 5 минут.
+          runbook: Consumer повторяет вставку с backoff и падает после 5 попыток, offset при этом не коммитится. Проверить ClickHouse.
+        labels: {severity: warning}
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 300, to: 0}
+            model: {refId: A, instant: true, expr: 'sum(increase(cdc_consumer_insert_errors_total[5m]))'}
+          - refId: C
+            datasourceUid: __expr__
+            relativeTimeRange: {from: 0, to: 0}
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+
+      - uid: cdc-dlq-messages
+        title: Сообщения в DLQ
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: В shop.dlq попали сообщения за последние 15 минут. Строки не дошли до ClickHouse, сверка с источником разойдётся.
+          runbook: Прочитать shop.dlq в kafka-ui, причина и исходный offset в заголовках. Исправить и переиграть вручную.
+        labels: {severity: critical}
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 900, to: 0}
+            model: {refId: A, instant: true, expr: 'sum(increase(cdc_consumer_dlq_messages_total[15m]))'}
+          - refId: C
+            datasourceUid: __expr__
+            relativeTimeRange: {from: 0, to: 0}
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+
+      # Проверка результата, а не процесса: ловит и упавший DAG, и выключенный Airflow,
+      # и DAG, который зелёный, но ничего не собрал. 26 часов = сутки плюс запас на сборку.
+      - uid: marts-stale
+        title: Витрины не обновлялись больше суток
+        condition: C
+        for: 0s
+        noDataState: Alerting
+        execErrState: Error
+        annotations:
+          summary: Витрины в marts не пересобирались больше 26 часов. Дашборд показывает устаревшие данные.
+          runbook: Проверить последний запуск DAG shop_daily в Airflow, в том числе свежесть источников.
+        labels: {severity: warning}
+        data:
+          - refId: A
+            datasourceUid: clickhouse
+            relativeTimeRange: {from: 300, to: 0}
+            model:
+              refId: A
+              editorType: sql
+              queryType: table
+              format: 1
+              rawSql: "SELECT dateDiff('hour', max(metadata_modification_time), now()) AS hours FROM system.tables WHERE database = 'marts' AND engine != 'View'"
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange: {from: 0, to: 0}
+            model: {refId: B, type: reduce, reducer: last, expression: A}
+          - refId: C
+            datasourceUid: __expr__
+            relativeTimeRange: {from: 0, to: 0}
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [26]}

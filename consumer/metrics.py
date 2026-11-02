@@ -15,6 +15,7 @@ MESSAGES = Counter("cdc_consumer_messages_total", "Прочитанные соо
 ROWS_INSERTED = Counter("cdc_consumer_rows_inserted_total", "Строки, записанные в ClickHouse", ["table"])
 INSERT_ERRORS = Counter("cdc_consumer_insert_errors_total", "Неудачные попытки вставки, включая те, что прошли при повторе",
                         ["table"])
+DLQ_MESSAGES = Counter("cdc_consumer_dlq_messages_total", "Сообщения, отправленные в DLQ", ["source_topic"])
 KAFKA_ERRORS = Counter("cdc_consumer_kafka_errors_total", "Ошибки, полученные от Kafka в poll()")
 BATCH_ROWS = Histogram("cdc_consumer_batch_rows", "Строк в одном сбросе буферов",
                        buckets=(1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500))
