@@ -1,2 +1,4 @@
 * text=auto eol=lf
 *.ps1 text eol=crlf
+# ответ ЦБ в windows-1251: не перекодировать и не трогать переводы строк
+tests/fixtures/*.xml -text

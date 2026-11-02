@@ -42,3 +42,12 @@ def test_url_uses_cbr_date_format():
     assert "date_req1=01/04/2026" in url
     assert "date_req2=31/10/2026" in url
     assert "VAL_NM_RQ=R01235" in url
+
+
+def test_fixture_covers_backfill_period():
+    # фикстура для интеграционного теста: настоящий ответ ЦБ на всю историю заказов
+    with open("tests/fixtures/cbr_usd_2026.xml", "rb") as f:
+        rows = r.parse_rates(f.read())
+    assert rows[0][0] <= date(2026, 4, 30)
+    assert rows[-1][0] >= date(2026, 10, 29)
+    assert [row[0] for row in rows] == sorted(row[0] for row in rows)

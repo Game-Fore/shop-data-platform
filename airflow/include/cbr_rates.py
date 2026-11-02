@@ -7,7 +7,9 @@ ReplacingMergeTree по (currency_code, rate_date) делает повторну
 ЦБ не публикует курс на воскресенье и понедельник (и праздники), здесь записей за эти дни нет:
 последний известный курс подставляет dbt-модель dim_exchange_rates.
 Запуск: из Airflow (DAG shop_daily) или docker compose run --rm --entrypoint python dbt /include/cbr_rates.py
+С --from-file курс берётся из сохранённого ответа ЦБ тем же разбором: CI не зависит от доступности cbr.ru.
 """
+import argparse
 import logging
 import os
 import urllib.request
@@ -60,6 +62,10 @@ def fetch(start: date, end: date) -> bytes:
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--from-file", help="сохранённый XML-ответ ЦБ вместо запроса к API")
+    args = parser.parse_args()
+
     client = clickhouse_connect.get_client(
         host=os.getenv("CLICKHOUSE_HOST", "clickhouse"),
         port=int(os.getenv("CLICKHOUSE_HTTP_PORT", "8123")),
@@ -69,14 +75,17 @@ def main():
     client.command("CREATE DATABASE IF NOT EXISTS external")
     client.command(DDL)
 
-    first_order = client.command("SELECT toDate(min(created_at)) FROM shop.orders WHERE _is_deleted = 0")
-    end = date.today()
-    # заказов ещё нет: min() вернёт 1970-01-01, а такой диапазон у ЦБ запрашивать незачем
-    start = max(date.fromisoformat(str(first_order)) - LOOKBACK, end - timedelta(days=400))
-
-    rows = parse_rates(fetch(start, end))
+    if args.from_file:
+        with open(args.from_file, "rb") as f:
+            rows = parse_rates(f.read())
+    else:
+        first_order = client.command("SELECT toDate(min(created_at)) FROM shop.orders WHERE _is_deleted = 0")
+        end = date.today()
+        # заказов ещё нет: min() вернёт 1970-01-01, а такой диапазон у ЦБ запрашивать незачем
+        start = max(date.fromisoformat(str(first_order)) - LOOKBACK, end - timedelta(days=400))
+        rows = parse_rates(fetch(start, end))
     if not rows:  # пустой ответ - сбой источника: нельзя молча считать, что всё загружено
-        raise RuntimeError(f"ЦБ не вернул курс за {start} - {end}")
+        raise RuntimeError("ЦБ не вернул ни одного курса")
     client.insert("external.cbr_rates", rows, column_names=["rate_date", "currency_code", "nominal", "rub_per_unit"])
     log.info("загружено %d курсов %s: %s - %s, последний %s",
              len(rows), CURRENCY_CODE, rows[0][0], rows[-1][0], rows[-1][3])
