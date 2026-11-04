@@ -3,6 +3,7 @@ import random
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -149,3 +150,39 @@ class TestParseEndAt:
     def test_garbage_is_rejected(self):
         with pytest.raises(ValueError):
             b.parse_end_at("вчера")
+
+
+class TestRunBackfill:
+    """Обрыв backfill должен быть заметен: отметка о прогоне и явное сообщение."""
+
+    def conn(self, executed):
+        conn = MagicMock()
+        cur = conn.cursor.return_value.__enter__.return_value
+        cur.execute.side_effect = lambda sql, params=None: executed.append((sql.split()[0], params))
+        cur.fetchone.side_effect = [(0,), (1,)]  # 0 заказов; id прогона = 1
+        cur.fetchall.return_value = [(pid, Decimal("10.00")) for pid in PRODUCTS]
+        return conn
+
+    def test_progress_is_saved_with_each_batch_and_run_is_finished(self, monkeypatch):
+        monkeypatch.setattr(b, "apply", lambda *a: None)
+        executed = []
+        b.run_backfill(self.conn(executed), 20, seed=1, end_at=END_AT)
+        updates = [p for sql, p in executed if sql == "UPDATE" and p and len(p) == 2]
+        assert updates, "прогресс не сохраняется"
+        assert updates[-1][0] == max(p[0] for p in updates)  # последнее значение = все события
+        assert executed[-1][0] == "UPDATE" and len(executed[-1][1]) == 1  # finished_at
+
+    def test_interruption_is_reported(self, monkeypatch, caplog):
+        calls = {"n": 0}
+
+        def apply(*_):
+            calls["n"] += 1
+            if calls["n"] > b.BATCH_SIZE + 10:
+                raise KeyboardInterrupt
+        monkeypatch.setattr(b, "apply", apply)
+        executed = []
+        with pytest.raises(KeyboardInterrupt), caplog.at_level("ERROR"):
+            b.run_backfill(self.conn(executed), 60, seed=1, end_at=END_AT)
+        assert "ПРЕРВАН" in caplog.text
+        assert f"записано {b.BATCH_SIZE} из" in caplog.text
+        assert not any(sql == "UPDATE" and len(p) == 1 for sql, p in executed if p)  # finished_at не ставится

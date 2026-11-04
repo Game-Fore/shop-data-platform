@@ -246,7 +246,7 @@ docker compose --profile obs up -d --wait prometheus
 
 ### Доставка: consumer
 
-`consumer/consumer.py` читает четыре топика одной consumer group и пишет в ClickHouse:
+`consumer/consumer.py` читает пять топиков одной consumer group и пишет в ClickHouse:
 
 - **Батчинг**: буферы сбрасываются по размеру (1000 строк) или по таймеру (1 с), что наступит раньше.
 - **Ручной commit**: `enable.auto.commit=false`, offset коммитится только после успешной вставки всех буферов.

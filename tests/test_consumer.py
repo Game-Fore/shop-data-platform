@@ -189,3 +189,112 @@ def test_observe_lag_clears_pending(monkeypatch):
     c.observe_lag(pending)
     assert observed == [2.0, 0.5]
     assert pending == []
+
+
+class TestMetaFields:
+    """Служебные поля Debezium проверяются так же строго, как поля таблиц."""
+
+    @pytest.mark.parametrize("bad", [
+        {"__lsn": "abc"}, {"__lsn": -1}, {"__lsn": 1.5}, {"__lsn": None},
+        {"__op": "x"}, {"__op": None},
+        {"__source_ts_ms": "now"},
+        {"__deleted": "yes"},
+    ])
+    def test_bad_meta_fails_before_insert(self, bad):
+        with pytest.raises((ValueError, KeyError)):
+            c.to_row(order_event(**bad), ORDER_FIELDS)
+
+    @pytest.mark.parametrize("operation", ["c", "u", "d", "r"])
+    def test_all_debezium_ops_accepted(self, operation):
+        assert c.to_row(order_event(__op=operation), ORDER_FIELDS)[-4] == operation
+
+    def test_missing_deleted_means_not_deleted(self):
+        event = order_event()
+        del event["__deleted"]
+        assert c.to_row(event, ORDER_FIELDS)[-1] == 0
+
+
+def kafka_message(value: dict | bytes, topic="shop.public.orders", offset=0):
+    msg = MagicMock()
+    msg.error.return_value = None
+    msg.value.return_value = value if isinstance(value, bytes) else json.dumps(value).encode()
+    msg.topic.return_value = topic
+    msg.partition.return_value = 0
+    msg.offset.return_value = offset
+    msg.key.return_value = None
+    return msg
+
+
+class TestRunner:
+    def make(self, monkeypatch, messages, insert_side_effect=None):
+        monkeypatch.setattr(c.time, "sleep", lambda _: None)
+        consumer, ch, dlq = MagicMock(), MagicMock(), MagicMock()
+        ch.insert.side_effect = insert_side_effect
+        runner = c.Runner(consumer, ch, dlq)
+        queue = list(messages)
+
+        def poll(_):
+            # после очереди сообщений - "сигнал остановки", как от SIGTERM
+            if queue:
+                return queue.pop(0)
+            runner.stop()
+            return None
+        consumer.poll.side_effect = poll
+        return runner, consumer, ch, dlq
+
+    def test_graceful_stop_flushes_tail_and_commits_once(self, monkeypatch):
+        runner, consumer, ch, _ = self.make(monkeypatch, [kafka_message(order_event())])
+        runner.run()
+        ch.insert.assert_called_once()
+        consumer.commit.assert_called_once()
+        consumer.close.assert_called_once()
+
+    def test_final_insert_error_is_not_retried_again_on_exit(self, monkeypatch):
+        # было: finally снова вызывал flush_all(), и все повторы с backoff выполнялись дважды
+        runner, consumer, ch, _ = self.make(monkeypatch, [kafka_message(order_event())],
+                                            insert_side_effect=ConnectionError("down"))
+        with pytest.raises(RuntimeError, match="giving up"):
+            runner.run()
+        assert ch.insert.call_count == c.MAX_RETRIES
+        consumer.commit.assert_not_called()  # offset не сдвинут: после перезапуска прочитаем снова
+        consumer.close.assert_called_once()
+
+    def test_revoke_after_failure_does_not_retry(self, monkeypatch):
+        # consumer.close() вызывает on_revoke: он тоже не должен повторять вставку после сбоя
+        runner, consumer, ch, _ = self.make(monkeypatch, [kafka_message(order_event())],
+                                            insert_side_effect=ConnectionError("down"))
+        consumer.close.side_effect = lambda: runner.on_revoke(consumer, [])
+        with pytest.raises(RuntimeError):
+            runner.run()
+        assert ch.insert.call_count == c.MAX_RETRIES
+
+    def test_bad_lsn_goes_to_dlq_not_into_batch(self, monkeypatch):
+        runner, consumer, ch, dlq = self.make(
+            monkeypatch, [kafka_message(order_event(__lsn="abc")), kafka_message(order_event(id=2), offset=1)])
+        inserted = []
+        # flush очищает буфер после вставки, поэтому сохраняем копию строк в момент вызова
+        ch.insert.side_effect = lambda table, rows, **_: inserted.extend(list(rows))
+        runner.run()
+        dlq.send.assert_called_once()
+        assert [r[0] for r in inserted] == [2]
+        consumer.commit.assert_called_once()
+
+    def test_revoke_flushes_and_commits(self, monkeypatch):
+        runner, consumer, ch, _ = self.make(monkeypatch, [])
+        runner.handle(kafka_message(order_event()))
+        runner.on_revoke(consumer, [])
+        ch.insert.assert_called_once()
+        consumer.commit.assert_called_once()
+        assert runner.pending == 0
+
+
+def test_sigterm_and_sigint_stop_the_runner(monkeypatch):
+    # docker stop присылает SIGTERM: раньше обработчик был только на SIGINT
+    import signal
+    installed = {}
+    monkeypatch.setattr(c.signal, "signal", lambda sig, handler: installed.__setitem__(sig, handler))
+    runner = c.Runner(MagicMock(), MagicMock(), MagicMock())
+    c.install_signal_handlers(runner)
+    assert set(installed) == {signal.SIGINT, signal.SIGTERM}
+    installed[signal.SIGTERM](signal.SIGTERM, None)
+    assert runner.running is False

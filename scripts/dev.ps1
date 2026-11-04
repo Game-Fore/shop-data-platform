@@ -1,4 +1,4 @@
-# Типовые команды для Windows, те же, что в Makefile: .\scripts\dev.ps1 <команда>
+﻿# Типовые команды для Windows, те же, что в Makefile: .\scripts\dev.ps1 <команда>
 param([string]$Task = "help")
 
 $ErrorActionPreference = "Stop"
@@ -37,7 +37,12 @@ $tasks = [ordered]@{
     test        = @("unit-тесты, сервисы не нужны", { & $py -m pytest })
     integration = @("полный прогон на настоящем стенде, СТИРАЕТ данные (нужен Git Bash)", {
         $env:PYTHON = (Resolve-Path $py).Path -replace '\\', '/'
-        bash scripts/integration_test.sh
+        # именно Git Bash: просто "bash" в Windows находит bash.exe из WSL, который без дистрибутива не работает
+        # git.exe лежит в разных подкаталогах установки (cmd, ucrt64\bin): ищем вверх каталог с bin\bash.exe
+        $gitRoot = Split-Path (Get-Command git).Source
+        while ($gitRoot -and -not (Test-Path (Join-Path $gitRoot "bin\bash.exe"))) { $gitRoot = Split-Path $gitRoot }
+        if (-not $gitRoot) { throw "Не найден Git Bash рядом с git" }
+        & (Join-Path $gitRoot "bin\bash.exe") scripts/integration_test.sh
     })
 }
 

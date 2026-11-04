@@ -275,12 +275,29 @@ def apply(cur, ev: Event, prices: dict[int, Decimal], fake: Faker):
         cur.execute("UPDATE products SET price = %s WHERE id = %s", (prices[pid], pid))
 
 
+# Отметка о прогонах backfill. В CDC не попадает: Debezium читает только таблицы из table.include.list.
+# По ней verify.py отличает полную историю от оборванной: источник и приёмник при обрыве совпадают,
+# и сверка без этой отметки показала бы CONSISTENT.
+RUNS_DDL = """
+CREATE TABLE IF NOT EXISTS backfill_runs (
+    id           SERIAL PRIMARY KEY,
+    end_at       TIMESTAMPTZ NOT NULL,
+    seed         INT NOT NULL,
+    events_total INT NOT NULL,
+    events_done  INT NOT NULL DEFAULT 0,
+    started_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at  TIMESTAMPTZ
+)
+"""
+
+
 def run_backfill(conn, days: int, seed: int, end_at: datetime = DEFAULT_END_AT):
     random.seed(seed)
     fake = Faker("ru_RU")
     fake.seed_instance(seed)
 
     with conn.cursor() as cur:
+        cur.execute(RUNS_DDL)
         cur.execute("SELECT count(*) FROM orders")
         if cur.fetchone()[0] > 0:
             raise SystemExit("backfill: в orders уже есть данные. Сначала сбросьте стенд (reset.ps1).")
@@ -292,11 +309,29 @@ def run_backfill(conn, days: int, seed: int, end_at: datetime = DEFAULT_END_AT):
               for k in ("customer", "assignment", "order", "status", "price")}
     log.info("backfill %d days to %s (seed=%d): %s", days, end_at.isoformat(), seed, counts)
 
-    for i in range(0, len(events), BATCH_SIZE):
-        with conn.transaction(), conn.cursor() as cur:
-            for ev in events[i:i + BATCH_SIZE]:
-                apply(cur, ev, prices, fake)
-        done = min(i + BATCH_SIZE, len(events))
-        if done == len(events) or (i // BATCH_SIZE) % 20 == 0:
-            log.info("backfill: %d / %d events (up to %s)", done, len(events), events[done - 1].ts.date())
-    log.info("backfill done")
+    with conn.cursor() as cur:
+        cur.execute("INSERT INTO backfill_runs (end_at, seed, events_total) VALUES (%s, %s, %s) RETURNING id",
+                    (end_at, seed, len(events)))
+        run_id = cur.fetchone()[0]
+
+    done, next_report = 0, 0.1
+    try:
+        for i in range(0, len(events), BATCH_SIZE):
+            with conn.transaction(), conn.cursor() as cur:
+                for ev in events[i:i + BATCH_SIZE]:
+                    apply(cur, ev, prices, fake)
+                done = min(i + BATCH_SIZE, len(events))
+                # прогресс в той же транзакции, что и пачка: отметка не может разойтись с данными
+                cur.execute("UPDATE backfill_runs SET events_done = %s WHERE id = %s", (done, run_id))
+            if done / len(events) >= next_report or done == len(events):
+                log.info("backfill: %d / %d events (%.0f%%, up to %s)",
+                         done, len(events), 100 * done / len(events), events[done - 1].ts.date())
+                next_report += 0.1
+    except BaseException:
+        # в том числе Ctrl+C: без явного сообщения обрыв легко принять за успешное завершение
+        log.error("backfill ПРЕРВАН: записано %d из %d событий. История неполная, сбросьте стенд и повторите.",
+                  done, len(events))
+        raise
+    with conn.cursor() as cur:
+        cur.execute("UPDATE backfill_runs SET finished_at = now() WHERE id = %s", (run_id,))
+    log.info("backfill done: %d events", len(events))

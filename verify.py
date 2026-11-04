@@ -140,8 +140,24 @@ def main():
     for t, (raw, dup) in duplicates(ch).items():
         print(f"  {t:<12} raw={raw:<8} duplicates={dup}")
 
+    incomplete = unfinished_backfills(pg_dsn=PG_DSN)
+    for run_id, done, total in incomplete:
+        print(f"\nWARNING: backfill #{run_id} не завершён: записано {done} из {total} событий. "
+              "Источник и приёмник совпадают, но история неполная.")
+    if ok and incomplete:
+        print("\nRESULT: INCOMPLETE")
+        sys.exit(1)
     print("\nRESULT:", "CONSISTENT" if ok else "MISMATCH")
     sys.exit(0 if ok else 1)
+
+
+def unfinished_backfills(pg_dsn: str) -> list[tuple[int, int, int]]:
+    """Прогоны backfill без отметки о завершении. Таблицы нет - backfill не запускался."""
+    with psycopg.connect(pg_dsn, autocommit=True) as pg:
+        if pg.execute("SELECT to_regclass('backfill_runs')").fetchone()[0] is None:
+            return []
+        return pg.execute("SELECT id, events_done, events_total FROM backfill_runs "
+                          "WHERE finished_at IS NULL ORDER BY id").fetchall()
 
 
 if __name__ == "__main__":
